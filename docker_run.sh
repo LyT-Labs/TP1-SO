@@ -12,7 +12,14 @@ CONTAINER_DIR="/tp"
 echo "==> Corriendo contenedor con entorno del TP..."
 echo "==> Montando carpeta actual en $CONTAINER_DIR"
 
-docker run --rm -it \
+docker run \
+  --memory=512m \
+  --memory-swap=512m \
+  --cpus=0.5 \
+  --pids-limit=100 \
+  --tmpfs /tmp \
+  --name safe_container \
+  --rm -it \
     -v "$TP_DIR":"$CONTAINER_DIR" \
     -w "$CONTAINER_DIR" \
     "$IMAGE" \
