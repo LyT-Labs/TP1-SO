@@ -11,15 +11,41 @@
 
 
 #define COLOR_RESET "\033[0m" // Reset
-#define COLOR_PLAYER_1 "\033[41m" // Rojo
-#define COLOR_PLAYER_2 "\033[42m" // Verde
-#define COLOR_PLAYER_3 "\033[43m" // Amarillo
-#define COLOR_PLAYER_4 "\033[44m" // Azul
-#define COLOR_PLAYER_5 "\033[45m" // Magenta
-#define COLOR_PLAYER_6 "\033[46m" // Cian
-#define COLOR_PLAYER_7 "\033[100m" // Gris oscuro
-#define COLOR_PLAYER_8 "\033[47m" // Blanco
-#define COLOR_PLAYER_9 "\033[101m" // Rojo claro
+#define COLOR_PLAYER_1 "\033[41m" // Fondo rojo
+#define COLOR_PLAYER_2 "\033[42m" // Fondo verde
+#define COLOR_PLAYER_3 "\033[43m" // Fondo amarillo
+#define COLOR_PLAYER_4 "\033[44m" // Fondo azul
+#define COLOR_PLAYER_5 "\033[45m" // Fondo magenta
+#define COLOR_PLAYER_6 "\033[46m" // Fondo cian
+#define COLOR_PLAYER_7 "\033[100m" // Fondo gris oscuro
+#define COLOR_PLAYER_8 "\033[47m" // Fondo blanco
+#define COLOR_PLAYER_9 "\033[101m" // Fondo rojo claro
+
+#define SYMBOL_PLAYER_1 "#"
+#define SYMBOL_PLAYER_2 "@"
+#define SYMBOL_PLAYER_3 "$"
+#define SYMBOL_PLAYER_4 "%"
+#define SYMBOL_PLAYER_5 "&"
+#define SYMBOL_PLAYER_6 "*"
+#define SYMBOL_PLAYER_7 "!"
+#define SYMBOL_PLAYER_8 "^"
+#define SYMBOL_PLAYER_9 "~"
+
+
+const char* get_player_symbol(int player_id) {
+    switch (player_id) {
+        case 0: return SYMBOL_PLAYER_1;
+        case 1: return SYMBOL_PLAYER_2;
+        case 2: return SYMBOL_PLAYER_3;
+        case 3: return SYMBOL_PLAYER_4;
+        case 4: return SYMBOL_PLAYER_5;
+        case 5: return SYMBOL_PLAYER_6;
+        case 6: return SYMBOL_PLAYER_7;
+        case 7: return SYMBOL_PLAYER_8;
+        case 8: return SYMBOL_PLAYER_9;
+        default: return " "; // Sin símbolo
+    }
+}
 
 const char* get_player_color(int player_id) {
     switch (player_id) {
@@ -35,24 +61,78 @@ const char* get_player_color(int player_id) {
         default: return COLOR_RESET; // Sin color
     }
 }
+void renderizar_tablero(GameState* estado) {
+    int width = estado->width;
+    int height = estado->height;
 
+    // Calcular el ancho total del tablero para centrar "TABLERO"
+    int tablero_width = width * 4 + 1; // Cada celda tiene 3 espacios más un separador
+    int texto_length = 7; // Longitud de la palabra "TABLERO"
+    int padding = (tablero_width - texto_length) / 2;
+
+    // Imprimir la línea superior del marco de "TABLERO"
+    printf("┌");
+    for (int i = 0; i < tablero_width - 2; i++) {
+        printf("─");
+    }
+    printf("┐\n");
+
+    // Imprimir la fila con "TABLERO" centrado
+    printf("│");
+    for (int i = 0; i < padding; i++) {
+        printf(" ");
+    }
+    printf("TABLERO");
+    for (int i = 0; i < padding; i++) {
+        printf(" ");
+    }
+    // Ajustar si el ancho no es divisible exactamente
+    if (tablero_width % 2 != texto_length % 2) {
+        printf(" ");
+    }
+    printf("│\n");
+
+    // Imprimir la línea divisoria entre "TABLERO" y el tablero
+    printf("├");
+    for (int i = 0; i < width; i++) {
+        printf("───┬");
+    }
+    printf("\b┤\n"); // Reemplazar el último "┬" con "┤"
+
+    // Imprimir las filas del tablero
+    for (int y = 0; y < height; y++) {
+        printf("│"); // Borde izquierdo
+        for (int x = 0; x < width; x++) {
+            int cell_value = estado->tablero[y * width + x];
+            if (cell_value > 0) {
+                printf(" %s%s%s │", get_player_color(cell_value - 1), get_player_symbol(cell_value - 1), COLOR_RESET);
+            } else {
+                printf("   │");
+            }
+        }
+        printf("\n");
+
+        // Imprimir la línea divisoria o inferior
+        if (y < height - 1) {
+            printf("├");
+            for (int i = 0; i < width; i++) {
+                printf("───┼");
+            }
+            printf("\b┤\n"); // Reemplazar el último "┼" con "┤"
+        }
+    }
+
+    // Imprimir la línea inferior del tablero
+    printf("└");
+    for (int i = 0; i < width; i++) {
+        printf("───┴");
+    }
+    printf("\b┘\n"); // Reemplazar el último "┴" con "┘"
+}
 
 void mostrar_estado(GameState* estado) {
     
-    printf("\n----TABLERO----\n");
-    for (int i = 0; i < estado->height; i++) {
-        for (int j = 0; j < estado->width; j++) {
-
-            int cell_value = estado->tablero[i * estado->width + j];
-            if (cell_value <= 0) {
-                printf("%s%2d %s", get_player_color(-cell_value), cell_value, COLOR_RESET);
-            }else{
-                printf("%2d ", cell_value);
-            }
-
-        }
-        printf("\n");
-    }
+    renderizar_tablero(estado);
 
     printf("\n----JUGADORES----\n");
     for (int i = 0; i < estado->cantidad_jugadores; i++) {
