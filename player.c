@@ -19,6 +19,7 @@ int mi_id = -1;
 int mi_x = -1;
 int mi_y = -1;
 int estoy_bloqueado = 0;
+int me_movieron = 1;
 
 bool es_movimiento_valido(unsigned char dir) {
     int nuevo_x = mi_x;
@@ -47,13 +48,13 @@ bool es_movimiento_valido(unsigned char dir) {
     int indice = nuevo_y * width + nuevo_x;
     if (tablero[indice] <= 0) {
         // Print estado
-        // fprintf(stderr, "[Estado] Jugador %d en (%d, %d) moviéndose a (%d, %d)\n", tablero[indice], mi_x, mi_y, nuevo_x, nuevo_y);
+        // fprintf(stderr, "[Estado] Jugador %d en (%d, %d) moviéndose a (%d, %d)\n", mi_id, mi_x, mi_y, nuevo_x, nuevo_y);
         // // Print all the squares in the area (9 squares)
         // for (int i = -1; i <= 1; i++) {
         //     for (int j = -1; j <= 1; j++) {
-        //         int nuevo_indice = (nuevo_y + i) * width + (nuevo_x + j);
+        //         int nuevo_indice = (mi_y + i) * width + (mi_x + j);
         //         if (nuevo_indice >= 0 && nuevo_indice < width * height) {
-        //             fprintf(stderr, "[Estado] Celda (%d, %d): %d\n", nuevo_x + j, nuevo_y + i, tablero[nuevo_indice]);
+        //             fprintf(stderr, "[Estado] Celda (%d, %d): %d\n", mi_y + j, mi_y + i, tablero[nuevo_indice]);
         //         }
         //     }
         // }
@@ -64,9 +65,7 @@ bool es_movimiento_valido(unsigned char dir) {
     return true;
 }
 
-
-unsigned char get_first_valid_movement()
-{
+unsigned char get_first_valid_movement() {
     // Intentar mover en las 8 direcciones
     for (unsigned char dir = 0; dir < 8; dir++) {
         if (es_movimiento_valido(dir)) {
@@ -76,6 +75,8 @@ unsigned char get_first_valid_movement()
 
     return 0; // Si no hay movimientos válidos, retornar 0 (arriba)
 }
+
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         fprintf(stderr, "Uso: %s ancho alto\n", argv[0]);
@@ -101,9 +102,14 @@ int main(int argc, char* argv[]) {
     SyncState* sync = mmap(NULL, sizeof(SyncState), PROT_READ | PROT_WRITE, MAP_SHARED, shm_sync_fd, 0);
 
     srand(getpid());
+    tablero = malloc(sizeof(int) * estado->width * estado->height);
+    if (tablero == NULL) {
+        fprintf(stderr, "[player] Error al asignar memoria para el tablero\n");
+        exit(1);
+    }
 
     while (!estado->terminado) {
-        // protocolo de lector
+        // // protocolo de lector
         sem_wait(&sync->C);
         sem_post(&sync->C);
         
@@ -114,34 +120,60 @@ int main(int argc, char* argv[]) {
             sem_wait(&sync->D);
         }
         sem_post(&sync->E);
+
+        // usleep(1000 * 1000); // 200ms
+
+
         width = estado->width;
         height = estado->height;
 
-        // copiar el tablero
-        tablero = malloc(sizeof(int) * estado->width * estado->height);
-        if (tablero == NULL) {
-            fprintf(stderr, "[player] Error al asignar memoria para el tablero\n");
-            exit(1);
-        }
-        memcpy(tablero, estado->tablero, sizeof(int) * estado->width * estado->height);
-
-        for (int i = 0; i < estado->cantidad_jugadores; i++) {
-            if (estado->jugadores[i].pid == getpid()) {
-                mi_id = i;
-                mi_x = estado->jugadores[i].x;
-                mi_y = estado->jugadores[i].y;
-                estoy_bloqueado = estado->jugadores[i].bloqueado;
-                break;
-            }
-        }
-
-        // if (copia.mi_id == -1) {
-        //     fprintf(stderr, "No encontré mi pid en el estado\n");
-        //     exit(1);
-        //     break;
+        // int es_diferente = 0;
+        // // VALIDAR SI EL TABLERO ES DIFERENTE
+        // if (tablero != NULL) {
+        //     for (int i = 0; i < estado->width * estado->height; i++) {
+        //         if (tablero[i] != estado->tablero[i]) {
+        //             es_diferente = 1;
+        //             break;
+        //         }
+        //     }
         // }
         
+        // if (!es_diferente) {   
+        //     cuantas_veces_es_igual++;
+
+        //     continue;
+        // }
+        // copiar el tablero
+        memcpy(tablero, estado->tablero, sizeof(int) * estado->width * estado->height);
+
+        if (mi_id == -1) {
+            // buscar mi id
+            for (int i = 0; i < estado->cantidad_jugadores; i++) {
+                if (estado->jugadores[i].pid == getpid()) {
+                    mi_id = i;
+                    break;
+                }
+            }
+        }
+        estoy_bloqueado = estado->jugadores[mi_id].bloqueado;
+
+        if (mi_x == estado->jugadores[mi_id].x && mi_y == estado->jugadores[mi_id].y) {
+            me_movieron = 0;
+        } else {
+            me_movieron = 1;
+        }
         
+        
+        mi_x = estado->jugadores[mi_id].x;
+        mi_y = estado->jugadores[mi_id].y;
+        
+        // if (copia.mi_id == -1) {
+            //     fprintf(stderr, "No encontré mi pid en el estado\n");
+            //     exit(1);
+            //     break;
+            // }
+            
+            
         // fin lectura
         sem_wait(&sync->E);
         sync->F--;
@@ -149,19 +181,26 @@ int main(int argc, char* argv[]) {
             sem_post(&sync->D);
         }
         sem_post(&sync->E);
-        // sem_post(&sync->C);
+        
         
         if (estoy_bloqueado) {
             break;
         }
+        
+        if (!me_movieron) {
+            // fprintf(stderr, "[player] Me movieron de (%d, %d) a (%d, %d)\n", mi_x, mi_y, estado->jugadores[mi_id].x, estado->jugadores[mi_id].y);
+            continue;
+        }
+        
+        // sem_post(&sync->C);
         // generar movimiento random
-        unsigned char dir = rand() % 8;
+        // unsigned char dir = rand() % 8;
         // unsigned char dir;
         // do {
         //     dir = rand() % 8; // Generar dirección aleatoria (0-7)
         //     // fprintf(stderr, "[player %d] Generando movimiento aleatorio: %d\n", copia.mi_id, dir);
         // } while (!es_movimiento_valido(dir));
-        // unsigned char dir = get_first_valid_movement();
+        unsigned char dir = get_first_valid_movement();
 
 
         // Validar si el pipe está listo para escritura
@@ -187,9 +226,11 @@ int main(int argc, char* argv[]) {
         }
         
         // Tipo de espera con sleep
-        // usleep(200 * 10000); // 20ms
+        // usleep(1000 * 1000); // 200ms
+
         
     }
+    free(tablero);
     
     fprintf(stderr, "[player] Terminado\n");
     // cerrar memoria compartida
