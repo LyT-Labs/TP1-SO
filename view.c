@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
         // Leer el estado del juego
         printf("\033[H\033[J"); // \033[H mueve el cursor al inicio, \033[J limpia desde el cursor hasta el final
         print_state(state);
-        sleep(0); // Esperar 2 segundos para que el usuario vea el estado antes de limpiar
+        sleep(0); 
         // Indicar al máster que ya imprimió
         sem_post(&sync->print_done);
     }
