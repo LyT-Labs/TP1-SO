@@ -10,6 +10,12 @@
 #include <time.h>
 #include "game_state.h"
 #include <sys/select.h>
+#include <math.h> // Para usar sin() y cos()
+#include <wait.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #define SHM_STATE "/game_state"
 #define SHM_SYNC "/game_sync"
@@ -124,13 +130,26 @@ void init_game_state(GameState* state) {
     state->height = height;
     state->player_count = player_count;
     state->is_finished = false;
-    
+
     // Inicializar el tablero
     srand(seed);
     for (int i = 0; i < width * height; i++) {
         state->board[i] = (rand() % 9) + 1; // Valores aleatorios entre 1 y 9
     }
-    
+
+    // Calcular el centro de la elipse
+    int center_x = width / 2;
+    int center_y = height / 2;
+
+    // Calcular los semiejes de la elipse
+    double semi_major_axis = width * 0.3;  // Eje mayor (30% del ancho del tablero)
+    double semi_minor_axis = height * 0.3; // Eje menor (30% del alto del tablero)
+
+    if (player_count >= 5) {
+        semi_major_axis = width * 0.4;  // Eje mayor (40% del ancho del tablero)
+        semi_minor_axis = height * 0.4; // Eje menor (40% del alto del tablero)
+    }
+
     // Inicializar jugadores
     for (int i = 0; i < player_count; i++) {
         state->players[i].score = 0;
@@ -138,7 +157,8 @@ void init_game_state(GameState* state) {
         state->players[i].valid_moves = 0;
         state->players[i].is_blocked = false;
         state->players[i].pid = -1;
-        // path/to/player => name = player
+
+        // Obtener el nombre del jugador
         char* last_slash = strrchr(player_paths[i], '/');
         if (last_slash != NULL) {
             strncpy(state->players[i].name, last_slash + 1, MAX_NAME - 1);
@@ -147,11 +167,26 @@ void init_game_state(GameState* state) {
         }
         state->players[i].name[MAX_NAME - 1] = '\0'; // Asegurarse de que la cadena esté terminada
 
-        // TODO: No deberia ser aleatorio. DEBE SER DETERMINISTICO
-        state->players[i].x = i;
-        state->players[i].y = i;
-        // Inicializar posición aleatoria
-        state->board[state->players[i].x * width + state->players[i].y] = -i; // Marcar la celda como ocupada por el jugador
+        // Calcular la posición del jugador en la elipse
+        double angle = (2 * M_PI / player_count) * i; // Ángulo en radianes
+        int x = center_x + (int)(semi_major_axis * cos(angle));
+        int y = center_y + (int)(semi_minor_axis * sin(angle));
+
+        // Asegurarse de que las posiciones estén dentro de los límites del tablero
+        x = (x < 0) ? 0 : (x >= width ? width - 1 : x);
+        y = (y < 0) ? 0 : (y >= height ? height - 1 : y);
+
+        state->players[i].x = x;
+        state->players[i].y = y;
+
+        if (player_count == 1) {
+            // Si solo hay un jugador, va al centro, como ChompChamps
+            state->players[i].x = center_x;
+            state->players[i].y = center_y;
+        }
+
+        // Marcar la celda como ocupada por el jugador
+        state->board[state->players[i].y * width + state->players[i].x] = -i;
     }
 }
 
@@ -342,6 +377,7 @@ bool check_for_blocking(GameState* state) {
 int main(int argc, char* argv[]) {
     // Validar argumentos
     validate_args(argc, argv);
+    system("clear");
 
     // Crear memoria compartida del estado (solo máster la puede escribir, los demás la leen)
     int shm_fd = shm_open(SHM_STATE, O_CREAT | O_RDWR, 0644);
@@ -405,8 +441,18 @@ int main(int argc, char* argv[]) {
 
         struct timeval tv = { .tv_sec = timeout, .tv_usec = 0 };
         int ready = select(max_fd + 1, &read_fds, NULL, NULL, &tv);
+
+        bool no_moves_found = false;
+
+        if (ready < 0) {
+            perror("select");
+            break;
+        } else if (ready == 0) {
+            // Timeout, no hay movimientos disponibles
+            printf("Timeout, no hay movimientos disponibles.\n");
+            no_moves_found = true;
+        }
         
-        bool no_moves_found = true;
 
         for (int offset = 1; offset <= player_count; offset++) {
             int index = (offset + last_player_moved) % player_count; // Ciclo circular
@@ -421,7 +467,6 @@ int main(int argc, char* argv[]) {
                     dir = mov;
                     player_id = index;
                     last_player_moved = index;
-                    no_moves_found = false;
                     break;
                 } else {
                     // EOF
@@ -431,18 +476,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (no_moves_found) {
-            // Si no hay movimientos, espera un poco y vuelve a intentarlo
-            printf("DIR: %d\n", dir);
-            printf("PLAYER_ID: %d\n", player_id);
-            printf("LAST_PLAYER_MOVED: %d\n", last_player_moved);
-            for (int i = 0; i < player_count; i++) {
-                printf("Player %d: %s (PID: %d, Active: %d)\n", i, state->players[i].name, processes[i].pid, processes[i].active);
-            }
-            printf("No hay movimientos disponibles, esperando...\n");
-            continue;
-        }
-
+        
         // VER EN QUÉ DIRECCIÓN MOVERSE, PROBABLEMENTE CON UN SELECT CON LOS PIPES
         // unsigned char dir = rand() % 8; // Selecciona una dirección aleatoria (0-7)
         // int player_id = rand() % player_count; // Selecciona un jugador aleatorio para mover
@@ -453,10 +487,16 @@ int main(int argc, char* argv[]) {
         sem_wait(&sync->starvation_mutex);
         sem_wait(&sync->game_state_mutex);
         sem_post(&sync->starvation_mutex);
-
-        // Movimiento del jugador y validación de condición de fin
-        try_to_move_player(player_id, dir, state);
-        state->is_finished = check_for_blocking(state);
+        
+        if (no_moves_found) {
+            // Si no hay movimientos pendientes, se termina el juego   
+            state->is_finished = true;
+            
+        }else{
+            // Movimiento del jugador y validación de condición de fin
+            try_to_move_player(player_id, dir, state);
+            state->is_finished = check_for_blocking(state);
+        }
         
 
         sem_post(&sync->changes_available);
@@ -466,7 +506,25 @@ int main(int argc, char* argv[]) {
     }
 
     for (int i = 0; i < player_count; i++) {
-        waitpid(processes[i].pid, NULL, 0); // Esperar a que el jugador termine
+        int status;
+        int pid = waitpid(processes[i].pid, &status, 0);
+        if (pid == -1) {
+            perror("waitpid");
+
+        }
+        if (WIFEXITED(status)){
+            int exit_code = WEXITSTATUS(status);
+            // Player player (0) exited (0) with a score of 0 / 0 / 0
+            printf("Player %s (%d) exited (%d) with a score of %u / %u / %u\n", 
+                   state->players[i].name, i, exit_code,
+                   state->players[i].score, state->players[i].valid_moves,
+                   state->players[i].invalid_moves);
+            
+        }
+        if (processes[i].active) {
+            close(processes[i].pipe_read_fd);
+        }
+        
     }
 
     // Limpiar memoria compartida
