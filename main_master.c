@@ -64,6 +64,21 @@ typedef struct {
 PlayerProc processes[MAX_PLAYERS];
 
 
+struct timeval last_msg_time;
+
+void update_last_msg_time() {
+    gettimeofday(&last_msg_time, NULL);
+}
+
+int get_remaining_timeout_sec(int total_timeout_sec) {
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    
+    int elapsed = now.tv_sec - last_msg_time.tv_sec;
+    int remaining = total_timeout_sec - elapsed;
+    return remaining > 0 ? remaining : 0;
+}
+
 
 /*
 A continuación se listan los parámetros que acepta el máster. Los parámetros entre
@@ -454,7 +469,8 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        struct timeval tv = { .tv_sec = timeout, .tv_usec = 0 };
+        int remaining_timeout = get_remaining_timeout_sec(timeout);
+        struct timeval tv = { .tv_sec = remaining_timeout, .tv_usec = 0 };
         int ready = select(max_fd + 1, &read_fds, NULL, NULL, &tv);
 
         bool no_moves_found = false;
@@ -462,7 +478,7 @@ int main(int argc, char* argv[]) {
         if (ready < 0) {
             perror("select");
             break;
-        } else if (ready == 0) {
+        } else if (ready == 0 || remaining_timeout == 0) {
             // Timeout, no hay movimientos disponibles
             printf("Timeout, no hay movimientos disponibles.\n");
             no_moves_found = true;
@@ -482,6 +498,7 @@ int main(int argc, char* argv[]) {
                     dir = mov;
                     player_id = index;
                     last_player_moved = index;
+                    update_last_msg_time();
                     break;
                 } else {
                     // EOF
