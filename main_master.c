@@ -42,14 +42,17 @@ char* player_paths[MAX_PLAYERS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NUL
 
 unsigned int player_count = 0;
 
+int last_player_moved = 0;  // índice, no pid
 
 typedef struct {
     pid_t pid;
     int pipe_read_fd;  // máster lee de acá
-    bool bloqueado;
+    bool active; // 1 si el jugador está activo, 0 si se cerró el pipe (ocurrió un EOF)
 } PlayerProc;
 
-PlayerProc procesos[MAX_PLAYERS];
+PlayerProc processes[MAX_PLAYERS];
+
+
 
 /*
 A continuación se listan los parámetros que acepta el máster. Los parámetros entre
@@ -121,7 +124,13 @@ void init_game_state(GameState* state) {
     state->height = height;
     state->player_count = player_count;
     state->is_finished = false;
-
+    
+    // Inicializar el tablero
+    srand(seed);
+    for (int i = 0; i < width * height; i++) {
+        state->board[i] = (rand() % 9) + 1; // Valores aleatorios entre 1 y 9
+    }
+    
     // Inicializar jugadores
     for (int i = 0; i < player_count; i++) {
         state->players[i].score = 0;
@@ -139,14 +148,10 @@ void init_game_state(GameState* state) {
         state->players[i].name[MAX_NAME - 1] = '\0'; // Asegurarse de que la cadena esté terminada
 
         // TODO: No deberia ser aleatorio. DEBE SER DETERMINISTICO
-        state->players[i].x = rand() % width; // Posición aleatoria
-        state->players[i].y = rand() % height; // Posición aleatoria
-
-    }
-    // Inicializar el tablero
-    srand(seed);
-    for (int i = 0; i < width * height; i++) {
-        state->board[i] = (rand() % 9) + 1; // Valores aleatorios entre 1 y 9
+        state->players[i].x = i;
+        state->players[i].y = i;
+        // Inicializar posición aleatoria
+        state->board[state->players[i].x * width + state->players[i].y] = -i; // Marcar la celda como ocupada por el jugador
     }
 }
 
@@ -159,7 +164,8 @@ void init_sync_state(SyncState* sync) {
     sync->reader_count = 0;
 }
 
-
+// Función para crear los procesos de los jugadores, no las inicializaciones (eso está en init_game_state)
+// Se crean los pipes y se redirige la salida estándar de cada jugador al pipe correspondiente
 void create_players(GameState* state) {
     for (int i = 0; i < player_count; i++) {
         int pipefd[2];
@@ -181,20 +187,32 @@ void create_players(GameState* state) {
             close(pipefd[1]);
 
             setgid(1000); // Cambia el grupo del proceso
+            
 
-            char ancho_str[8], alto_str[8];
-            snprintf(ancho_str, sizeof(ancho_str), "%hu", width);
-            snprintf(alto_str, sizeof(alto_str), "%hu", height);
+            char *ancho_str, *alto_str;
+            int ancho_len = snprintf(NULL, 0, "%hu", width) + 1;
+            int alto_len = snprintf(NULL, 0, "%hu", height) + 1;
+
+            ancho_str = malloc(ancho_len);
+            alto_str = malloc(alto_len);
+
+            if (ancho_str == NULL || alto_str == NULL) {
+                perror("malloc");
+                exit(1);
+            }
+
+            snprintf(ancho_str, ancho_len, "%hu", width);
+            snprintf(alto_str, alto_len, "%hu", height);
             execl(player_paths[i], player_paths[i], ancho_str, alto_str, NULL);
             perror("execl jugador");
             exit(1);
         } else {
             // Proceso máster
             close(pipefd[1]); // Cierra escritura
-            procesos[i].pid = pid;
-            procesos[i].pipe_read_fd = pipefd[0];
-            procesos[i].bloqueado = false;
+            processes[i].pid = pid;
+            processes[i].pipe_read_fd = pipefd[0];
             state->players[i].pid = pid;
+            processes[i].active = true; // El jugador está activo
         }
     }
 }
@@ -327,9 +345,21 @@ int main(int argc, char* argv[]) {
 
     // Crear memoria compartida del estado (solo máster la puede escribir, los demás la leen)
     int shm_fd = shm_open(SHM_STATE, O_CREAT | O_RDWR, 0644);
-    ftruncate(shm_fd, sizeof(GameState) + sizeof(int) * width * height);
-    GameState* state = mmap(NULL, sizeof(GameState) + sizeof(int) * width * height, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shm_fd < 0) {
+        perror("shm_open state");
+        exit(EXIT_FAILURE);
+    }
+    if(ftruncate(shm_fd, sizeof(GameState) + sizeof(int) * width * height) == -1) {
+        perror("ftruncate state");
+        exit(EXIT_FAILURE);
+    }
+
     
+    GameState* state = mmap(NULL, sizeof(GameState) + sizeof(int) * width * height, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (state == MAP_FAILED) {
+        perror("mmap state");
+        exit(EXIT_FAILURE);
+    }
     
     // Inicializar el estado del juego
     init_game_state(state);
@@ -356,24 +386,66 @@ int main(int argc, char* argv[]) {
     sem_post(&sync->game_state_mutex);
 
     while (!state->is_finished) {
-        // fd_set readfds;
-        // FD_ZERO(&readfds);
-        // int maxfd = -1;
-        // bool hay_activos = false;
 
-        // for (int i = 0; i < player_count; i++) {
-        //     if (!procesos[i].bloqueado) {
-        //         FD_SET(procesos[i].pipe_read_fd, &readfds);
-        //         if (procesos[i].pipe_read_fd > maxfd)
-        //             maxfd = procesos[i].pipe_read_fd;
-        //         hay_activos = true;
-        //     }
-        // }
-
-
-        // VER EN QUÉ DIRECCIÓN MOVERSE, PROBABLEMENTE CON UN SELECT CON LOS PIPES
         unsigned char dir;
         int player_id;
+
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        int max_fd = -1;
+
+        for (int i = 0; i < player_count; i++) {
+            // agrega los pipes de los jugadores activos a la lista de lectura
+            if (!state->players[i].is_blocked && processes[i].active) {
+                FD_SET(processes[i].pipe_read_fd, &read_fds);
+                if (processes[i].pipe_read_fd > max_fd)
+                    max_fd = processes[i].pipe_read_fd;
+            }
+        }
+
+        struct timeval tv = { .tv_sec = timeout, .tv_usec = 0 };
+        int ready = select(max_fd + 1, &read_fds, NULL, NULL, &tv);
+        
+        bool no_moves_found = true;
+
+        for (int offset = 1; offset <= player_count; offset++) {
+            int index = (offset + last_player_moved) % player_count; // Ciclo circular
+            
+            
+            int fd = processes[index].pipe_read_fd;
+            if (FD_ISSET(fd, &read_fds)) {
+                unsigned char mov;
+                int n = read(fd, &mov, 1);
+                
+                if (n == 1) {
+                    dir = mov;
+                    player_id = index;
+                    last_player_moved = index;
+                    no_moves_found = false;
+                    break;
+                } else {
+                    // EOF
+                    close(fd);
+                    processes[index].active = false;
+                }
+            }
+        }
+
+        if (no_moves_found) {
+            // Si no hay movimientos, espera un poco y vuelve a intentarlo
+            printf("DIR: %d\n", dir);
+            printf("PLAYER_ID: %d\n", player_id);
+            printf("LAST_PLAYER_MOVED: %d\n", last_player_moved);
+            for (int i = 0; i < player_count; i++) {
+                printf("Player %d: %s (PID: %d, Active: %d)\n", i, state->players[i].name, processes[i].pid, processes[i].active);
+            }
+            printf("No hay movimientos disponibles, esperando...\n");
+            continue;
+        }
+
+        // VER EN QUÉ DIRECCIÓN MOVERSE, PROBABLEMENTE CON UN SELECT CON LOS PIPES
+        // unsigned char dir = rand() % 8; // Selecciona una dirección aleatoria (0-7)
+        // int player_id = rand() % player_count; // Selecciona un jugador aleatorio para mover
 
 
         // Para modificar el estado del juego, el máster debe tener el mutex (avisa con el de starvation que quiere entrar)
@@ -382,11 +454,7 @@ int main(int argc, char* argv[]) {
         sem_wait(&sync->game_state_mutex);
         sem_post(&sync->starvation_mutex);
 
-        
-        // SABIENDO LA DIRECCIÓN, INTENTAR MOVERSE
-        // INCREMENTAR SCORE/VALID MOVES/INVALID MOVES
-        // EN LA NUEVA POSICIÓN, VER SI ESTÁ BLOQUEADO
-        // EVALUAR SI HAY CONDICIÓN DE BREAK (TERMINAR JUEGO)
+        // Movimiento del jugador y validación de condición de fin
         try_to_move_player(player_id, dir, state);
         state->is_finished = check_for_blocking(state);
         
@@ -395,52 +463,10 @@ int main(int argc, char* argv[]) {
         sem_post(&sync->game_state_mutex);
 
         usleep(delay * 1000);
-
-
-        // if (!hay_activos) {
-        //     printf("Todos los jugadores están bloqueados.\n");
-        //     state->is_finished = true;
-        //     break;
-        // }
-
-        // struct timeval tv = { .tv_sec = timeout, .tv_usec = 0 };
-        // int ready = select(maxfd + 1, &readfds, NULL, NULL, &tv);
-
-        // if (ready < 0) {
-        //     perror("select");
-        //     break;
-        // } else if (ready == 0) {
-        //     printf("Timeout: ningún movimiento válido.\n");
-        //     state->is_finished = true;
-        //     break;
-        // }
-
-        // for (int i = 0; i < player_count; i++) {
-        //     int fd = procesos[i].pipe_read_fd;
-        //     if (FD_ISSET(fd, &readfds)) {
-        //         unsigned char mov;
-        //         int n = read(fd, &mov, 1);
-        //         if (n == 1) {
-        //             // TODO: validar y procesar el movimiento
-        //             // validar_movimiento(i, mov, state);
-        //             state->players[i].valid_moves++; // por ejemplo
-        //             printf("[Jugador %d] movimiento recibido: %d\n", i, mov);
-
-        //             // avisar a la vista
-        //             sem_post(&sync->changes_available);
-        //             sem_wait(&sync->print_done);
-        //         } else {
-        //             // EOF
-        //             procesos[i].bloqueado = true;
-        //             close(fd);
-        //             printf("[Jugador %d] EOF, se bloqueó\n", i);
-        //         }
-        //     }
-        // }
     }
 
     for (int i = 0; i < player_count; i++) {
-        waitpid(procesos[i].pid, NULL, 0); // Esperar a que el jugador termine
+        waitpid(processes[i].pid, NULL, 0); // Esperar a que el jugador termine
     }
 
     // Limpiar memoria compartida
