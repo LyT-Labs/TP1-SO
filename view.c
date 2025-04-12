@@ -1,9 +1,21 @@
 // view.c
 #include <stdio.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+#include <semaphore.h>
+
+#include <errno.h>
+#include <signal.h>
+#include <time.h>
+#include <stdbool.h>
+#include <string.h>
+
 #include "game_state.h"
 
 #define BOLD "\033[1m" // Negrita
@@ -92,8 +104,6 @@ void render_board_section(GameState* state) {
 
     // Calcular el ancho total del tablero para centrar "TABLERO"
     int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
-    int texto_length = 7; // Longitud de la palabra "TABLERO"
-    int padding = (tablero_width - texto_length) / 2;
 
     // Imprimir la palabra "TABLERO" centrada
     printf("%s", BOLD);
@@ -132,13 +142,6 @@ void print_centered(const char* text, int width) {
 }
 
 void render_players_section(GameState* state) {
-    int width = state->width;
-
-    // Calcular el ancho total del tablero para centrar "JUGADORES"
-    int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
-    int texto_length = 9; // Longitud de la palabra "JUGADORES"
-    int padding = (tablero_width - texto_length) / 2;
-
     // Imprimir la palabra "JUGADORES" centrada
     printf("\n\n%s", BOLD);
     print_divider_with_title(24+15*6, "JUGADORES");

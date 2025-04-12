@@ -2,16 +2,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+
 #include <sys/mman.h>
-#include <string.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include <sys/select.h>
+
 #include <unistd.h>
 #include <semaphore.h>
+#include <wait.h>
+
 #include <stdbool.h>
 #include <time.h>
-#include "game_state.h"
-#include <sys/select.h>
+#include <string.h>
 #include <math.h> // Para usar sin() y cos()
-#include <wait.h>
+#include "game_state.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -38,7 +43,13 @@
 
 // Esto no tiene tanto sentido creo yo, pero parece que el enunciado lo pide así
 // Si está definido, un delay de 4 segundos se vuelve de 6 si la vista tarda 2 segundos en imprimir
-#define DELAY_INCLUDES_VIEW
+// #define DELAY_INCLUDES_VIEW
+
+
+// Acá hay algo oscuro, por alguna razón desconocida para los integrantes del grupo,
+// el compilador no encuentra la definición de usleep, pero de todas maneras la linkedita igual
+// Solución atada con alambre: incluir la definición de usleep. Abrazo
+extern int usleep(__useconds_t usec);
 
 
 unsigned short width;
@@ -169,10 +180,10 @@ void init_game_state(GameState* state) {
     double semi_major_axis = width * 0.3;  // Eje mayor (30% del ancho del tablero)
     double semi_minor_axis = height * 0.3; // Eje menor (30% del alto del tablero)
 
-    if (player_count >= 5) {
-        semi_major_axis = width * 0.4;  // Eje mayor (40% del ancho del tablero)
-        semi_minor_axis = height * 0.4; // Eje menor (40% del alto del tablero)
-    }
+    // if (player_count >= 5) {
+    //     semi_major_axis = width * 0.4;  // Eje mayor (40% del ancho del tablero)
+    //     semi_minor_axis = height * 0.4; // Eje menor (40% del alto del tablero)
+    // }
 
     // Inicializar jugadores
     for (int i = 0; i < player_count; i++) {
