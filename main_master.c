@@ -48,6 +48,7 @@ unsigned int timeout;
 unsigned int seed;
 unsigned int player_count;
 char* view = NULL;
+int view_pid = -1;
 char* player_paths[MAX_PLAYERS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 unsigned int player_count = 0;
@@ -278,6 +279,8 @@ void create_view() {
         execl(view, view, ancho_str, alto_str, NULL);
         perror("execl vista");
         exit(1);
+    } else {
+        view_pid = pid;
     }
 }
 
@@ -424,14 +427,14 @@ int main(int argc, char* argv[]) {
     create_players(state);
     create_view();
 
-    sem_post(&sync->changes_available);
+    if(view) sem_post(&sync->changes_available);
     sem_post(&sync->game_state_mutex);
 
     #ifdef DELAY_INCLUDES_VIEW
-        sem_wait(&sync->print_done);
+        if(view) sem_wait(&sync->print_done);
     #endif
 
-    usleep(delay * 1000); // Espera el delay antes de continuar
+    if(view) usleep(delay * 1000); // Espera el delay antes de continuar
 
     while (!state->is_finished) {
 
@@ -491,7 +494,7 @@ int main(int argc, char* argv[]) {
 
         // Si la vista actualiza "asincrónicamente" mientras leemos el pipe, solo la tengo que esperar al modificar el estado
         #ifndef DELAY_INCLUDES_VIEW
-            sem_wait(&sync->print_done);
+            if(view) sem_wait(&sync->print_done);
         #endif
         
         // Para modificar el estado del juego, el máster debe tener el mutex (avisa con el de starvation que quiere entrar)
@@ -510,18 +513,31 @@ int main(int argc, char* argv[]) {
         }
         
 
-        sem_post(&sync->changes_available);
+        if(view) sem_post(&sync->changes_available);
         sem_post(&sync->game_state_mutex);
 
         // Si quiero que la vista bloquee el master y que el delay se sume a lo que tarde la vista, tengo que esperar acá a que imprima
         #ifdef DELAY_INCLUDES_VIEW
-            sem_wait(&sync->print_done);
+            if(view) sem_wait(&sync->print_done);
         #endif
 
-        usleep(delay * 1000);
+        if(view) usleep(delay * 1000);
     }
 
+    // Espero a que la view termine
+    if (view) {
+        int status;
+        view_pid = waitpid(view_pid, &status, 0);
+        if (view_pid == -1) {
+            perror("waitpid view");
+        }
+        if (WIFEXITED(status)) {
+            int exit_code = WEXITSTATUS(status);
+            printf("View exited (%d)\n", exit_code);
+        }
+    }
 
+    // Espero a que los hijos terminen e imprimo sus resultados
     for (int i = 0; i < player_count; i++) {
         int status;
         int pid = waitpid(processes[i].pid, &status, 0);
