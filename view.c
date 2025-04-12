@@ -21,15 +21,17 @@
 #define COLOR_PLAYER_8 "\033[47m" // Fondo blanco
 #define COLOR_PLAYER_9 "\033[101m" // Fondo rojo claro
 
-#define SYMBOL_PLAYER_1 "#"
-#define SYMBOL_PLAYER_2 "@"
-#define SYMBOL_PLAYER_3 "$"
-#define SYMBOL_PLAYER_4 "%"
-#define SYMBOL_PLAYER_5 "&"
-#define SYMBOL_PLAYER_6 "*"
-#define SYMBOL_PLAYER_7 "!"
-#define SYMBOL_PLAYER_8 "^"
-#define SYMBOL_PLAYER_9 "~"
+#define SYMBOL_PLAYER_1 "🐙"
+#define SYMBOL_PLAYER_2 "🦎"
+#define SYMBOL_PLAYER_3 "🐥"
+#define SYMBOL_PLAYER_4 "🐬"
+#define SYMBOL_PLAYER_5 "🦄"
+#define SYMBOL_PLAYER_6 "🐋"
+#define SYMBOL_PLAYER_7 "🐜"
+#define SYMBOL_PLAYER_8 "🐏"
+#define SYMBOL_PLAYER_9 "🪱"
+
+#define SYMBOL_DIVIDER "─"
 
 
 const char* get_player_symbol(int player_id) {
@@ -61,80 +63,61 @@ const char* get_player_color(int player_id) {
         default: return COLOR_RESET; // Sin color
     }
 }
+
+
+void imprimir_divisor(int width) {
+    for (int i = 0; i < width; i++) {
+        printf(SYMBOL_DIVIDER);
+    }
+}
+
+
 void renderizar_tablero(GameState* estado) {
     int width = estado->width;
     int height = estado->height;
 
     // Calcular el ancho total del tablero para centrar "TABLERO"
-    int tablero_width = width * 4 + 1; // Cada celda tiene 3 espacios más un separador
+    int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
     int texto_length = 7; // Longitud de la palabra "TABLERO"
     int padding = (tablero_width - texto_length) / 2;
 
-    // Imprimir la línea superior del marco de "TABLERO"
-    printf("┌");
-    for (int i = 0; i < tablero_width - 2; i++) {
-        printf("─");
-    }
-    printf("┐\n");
-
-    // Imprimir la fila con "TABLERO" centrado
-    printf("│");
-    for (int i = 0; i < padding; i++) {
-        printf(" ");
-    }
+    // Imprimir la palabra "TABLERO" centrada
+    imprimir_divisor(tablero_width - padding - texto_length);
     printf("TABLERO");
-    for (int i = 0; i < padding; i++) {
-        printf(" ");
-    }
-    // Ajustar si el ancho no es divisible exactamente
-    if (tablero_width % 2 != texto_length % 2) {
-        printf(" ");
-    }
-    printf("│\n");
+    imprimir_divisor(tablero_width - padding - texto_length);
+    printf("\n");
 
-    // Imprimir la línea divisoria entre "TABLERO" y el tablero
-    printf("├");
-    for (int i = 0; i < width; i++) {
-        printf("───┬");
-    }
-    printf("\b┤\n"); // Reemplazar el último "┬" con "┤"
 
     // Imprimir las filas del tablero
     for (int y = 0; y < height; y++) {
-        printf("│"); // Borde izquierdo
         for (int x = 0; x < width; x++) {
             int cell_value = estado->tablero[y * width + x];
-            if (cell_value > 0) {
-                printf(" %s%s%s │", get_player_color(cell_value - 1), get_player_symbol(cell_value - 1), COLOR_RESET);
+            if (cell_value <= 0) {
+                printf("%s %s %s", get_player_color(-cell_value), get_player_symbol(-cell_value), COLOR_RESET);
             } else {
-                printf("   │");
+                printf(" %2d ", cell_value);
             }
         }
         printf("\n");
-
-        // Imprimir la línea divisoria o inferior
-        if (y < height - 1) {
-            printf("├");
-            for (int i = 0; i < width; i++) {
-                printf("───┼");
-            }
-            printf("\b┤\n"); // Reemplazar el último "┼" con "┤"
-        }
     }
-
-    // Imprimir la línea inferior del tablero
-    printf("└");
-    for (int i = 0; i < width; i++) {
-        printf("───┴");
-    }
-    printf("\b┘\n"); // Reemplazar el último "┴" con "┘"
 }
 
-void mostrar_estado(GameState* estado) {
-    
-    renderizar_tablero(estado);
+void renderizar_jugadores(GameState* estado) {
+    int width = estado->width;
+    int height = estado->height;
 
-    printf("\n----JUGADORES----\n");
+    // Calcular el ancho total del tablero para centrar "TABLERO"
+    int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
+    int texto_length = 9; // Longitud de la palabra "JUGADORES"
+    int padding = (tablero_width - texto_length) / 2;
+    // Imprimir la palabra "JUGADORES" centrada
+    imprimir_divisor(tablero_width - padding - texto_length);
+    printf("JUGADORES");
+    imprimir_divisor(tablero_width - padding - texto_length);
+    printf("\n");
+    // Imprimir los jugadores
+
+    
     for (int i = 0; i < estado->cantidad_jugadores; i++) {
         Player* jugador = &estado->jugadores[i];
         printf("Jugador %d: %s%s%s, PID: %d, Puntaje: %u, Movimientos válidos: %u, Movimientos inválidos: %u, Posición: (%hu, %hu), Bloqueado: %s\n",
@@ -142,8 +125,17 @@ void mostrar_estado(GameState* estado) {
                jugador->valid_moves, jugador->invalid_moves,
                jugador->x, jugador->y, jugador->bloqueado ? "Sí" : "No");
     }
-    printf("\nEstado del juego: %s\n", estado->terminado ? "Terminado" : "En curso");
-    printf("----------------\n");
+    imprimir_divisor(tablero_width);
+    printf("\n");
+}
+
+
+
+void mostrar_estado(GameState* estado) {
+    
+    renderizar_tablero(estado);
+    renderizar_jugadores(estado);
+
     fflush(stdout);
 }
 

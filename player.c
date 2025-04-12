@@ -12,6 +12,8 @@
 #include <poll.h> // Incluir para usar poll()
 #include <string.h>
 
+// #define DEBUG
+
 int width = 0;
 int height = 0;
 int* tablero = NULL;
@@ -20,6 +22,7 @@ int mi_x = -1;
 int mi_y = -1;
 int estoy_bloqueado = 0;
 int me_movieron = 1;
+int error_sending_move = 0;
 
 bool es_movimiento_valido(unsigned char dir) {
     int nuevo_x = mi_x;
@@ -40,24 +43,28 @@ bool es_movimiento_valido(unsigned char dir) {
 
     // Verificar límites del tablero
     if (nuevo_x < 0 || nuevo_x >= width || nuevo_y < 0 || nuevo_y >= height) {
-        // fprintf(stderr, "[player] Movimiento fuera de límites: (%d, %d) -> (%d, %d)\n", mi_x, mi_y, nuevo_x, nuevo_y);
+        #ifdef DEBUG
+            fprintf(stderr, "[player] Movimiento fuera de límites: (%d, %d) -> (%d, %d)\n", mi_x, mi_y, nuevo_x, nuevo_y);
+        #endif
+
         return false;
     }
 
     // Verificar si la celda está ocupada
     int indice = nuevo_y * width + nuevo_x;
     if (tablero[indice] <= 0) {
-        // Print estado
-        // fprintf(stderr, "[Estado] Jugador %d en (%d, %d) moviéndose a (%d, %d)\n", mi_id, mi_x, mi_y, nuevo_x, nuevo_y);
-        // // Print all the squares in the area (9 squares)
-        // for (int i = -1; i <= 1; i++) {
-        //     for (int j = -1; j <= 1; j++) {
-        //         int nuevo_indice = (mi_y + i) * width + (mi_x + j);
-        //         if (nuevo_indice >= 0 && nuevo_indice < width * height) {
-        //             fprintf(stderr, "[Estado] Celda (%d, %d): %d\n", mi_y + j, mi_y + i, tablero[nuevo_indice]);
-        //         }
-        //     }
-        // }
+        #ifdef DEBUG
+            fprintf(stderr, "[Estado] Jugador %d en (%d, %d) moviéndose a (%d, %d)\n", mi_id, mi_x, mi_y, nuevo_x, nuevo_y);
+            // Print all the squares in the area (9 squares)
+            for (int i = -1; i <= 1; i++) {
+                for (int j = -1; j <= 1; j++) {
+                    int nuevo_indice = (mi_y + i) * width + (mi_x + j);
+                    if (nuevo_indice >= 0 && nuevo_indice < width * height) {
+                        fprintf(stderr, "[Estado] Celda (%d, %d): %d\n", mi_y + j, mi_y + i, tablero[nuevo_indice]);
+                    }
+                }
+            }
+        #endif
 
         return false;
     }
@@ -101,19 +108,29 @@ int main(int argc, char* argv[]) {
     }
     SyncState* sync = mmap(NULL, sizeof(SyncState), PROT_READ | PROT_WRITE, MAP_SHARED, shm_sync_fd, 0);
 
-    srand(getpid());
+    srand(getpid()); // Semilla para el generador de números aleatorios que no usamos lol
+
+    // Inicializar el tablero
     tablero = malloc(sizeof(int) * estado->width * estado->height);
     if (tablero == NULL) {
         fprintf(stderr, "[player] Error al asignar memoria para el tablero\n");
         exit(1);
     }
 
+    // buscar mi id
+    for (int i = 0; i < estado->cantidad_jugadores; i++) {
+        if (estado->jugadores[i].pid == getpid()) {
+            mi_id = i;
+            break;
+        }
+    }
+
     while (!estado->terminado) {
-        // // protocolo de lector
+        // anti-inanición
         sem_wait(&sync->C);
         sem_post(&sync->C);
         
-        
+        // lightswitch enter
         sem_wait(&sync->E);
         sync->F++;
         if (sync->F == 1) {
@@ -123,58 +140,25 @@ int main(int argc, char* argv[]) {
 
         // usleep(1000 * 1000); // 200ms
 
-
         width = estado->width;
         height = estado->height;
 
-        // int es_diferente = 0;
-        // // VALIDAR SI EL TABLERO ES DIFERENTE
-        // if (tablero != NULL) {
-        //     for (int i = 0; i < estado->width * estado->height; i++) {
-        //         if (tablero[i] != estado->tablero[i]) {
-        //             es_diferente = 1;
-        //             break;
-        //         }
-        //     }
-        // }
-        
-        // if (!es_diferente) {   
-        //     cuantas_veces_es_igual++;
-
-        //     continue;
-        // }
-        // copiar el tablero
+        // copiar el tablero nuevo
         memcpy(tablero, estado->tablero, sizeof(int) * estado->width * estado->height);
 
-        if (mi_id == -1) {
-            // buscar mi id
-            for (int i = 0; i < estado->cantidad_jugadores; i++) {
-                if (estado->jugadores[i].pid == getpid()) {
-                    mi_id = i;
-                    break;
-                }
-            }
-        }
         estoy_bloqueado = estado->jugadores[mi_id].bloqueado;
 
+        // para después no moverse si no cambié de posición
         if (mi_x == estado->jugadores[mi_id].x && mi_y == estado->jugadores[mi_id].y) {
             me_movieron = 0;
         } else {
             me_movieron = 1;
         }
         
-        
         mi_x = estado->jugadores[mi_id].x;
         mi_y = estado->jugadores[mi_id].y;
-        
-        // if (copia.mi_id == -1) {
-            //     fprintf(stderr, "No encontré mi pid en el estado\n");
-            //     exit(1);
-            //     break;
-            // }
             
-            
-        // fin lectura
+        // lightswitch exit (fin lectura)
         sem_wait(&sync->E);
         sync->F--;
         if (sync->F == 0) {
@@ -187,21 +171,21 @@ int main(int argc, char* argv[]) {
             break;
         }
         
-        if (!me_movieron) {
-            // fprintf(stderr, "[player] Me movieron de (%d, %d) a (%d, %d)\n", mi_x, mi_y, estado->jugadores[mi_id].x, estado->jugadores[mi_id].y);
+        // Evita pedir moverse si no ha cambiado de posición
+        // Excepto que sea porque el pipe estaba lleno, ahí sí se tiene que mover
+        if (!me_movieron && !error_sending_move) {
             continue;
         }
+        error_sending_move = 0;
         
         // sem_post(&sync->C);
-        // generar movimiento random
-        // unsigned char dir = rand() % 8;
+        // // generar movimiento random
         // unsigned char dir;
         // do {
         //     dir = rand() % 8; // Generar dirección aleatoria (0-7)
-        //     // fprintf(stderr, "[player %d] Generando movimiento aleatorio: %d\n", copia.mi_id, dir);
         // } while (!es_movimiento_valido(dir));
+        
         unsigned char dir = get_first_valid_movement();
-
 
         // Validar si el pipe está listo para escritura
         struct pollfd pfd;
@@ -209,27 +193,28 @@ int main(int argc, char* argv[]) {
         pfd.events = POLLOUT;
 
         int ret = poll(&pfd, 1, 0); // Timeout de 0 ms para no bloquear
-        if (ret == -1) {
-            perror("[player] Error al verificar estado del pipe con poll");
-            break;
-        } else if (ret == 0) {
-            // fprintf(stderr, "[player] Pipe sobrecargado, no se puede escribir ahora\n");
-            // Opcional: puedes agregar un pequeño retraso antes de reintentar
-            // usleep(1000); // 1ms
+        if (ret == -1 || ret == 0) {
+            #ifdef DEBUG
+                fprintf(stderr, "[player] Error al verificar estado del pipe con poll o el pipe está lleno\n");
+            #endif
+
+            error_sending_move = 1;
             continue; // Saltar esta iteración del loop
         }
 
-        // Intentar escribir si el pipe está listo
-        if (write(STDOUT_FILENO, &dir, 1) == -1) {
-            perror("[player] Error al escribir movimiento");
-            exit(1);
+        // Enviar movimiento al pipe
+        ret = write(STDOUT_FILENO, &dir, 1);
+        if (ret == -1) {
+            #ifdef DEBUG
+                fprintf(stderr, "[player] Pipe lleno, no se puede escribir ahora\n");
+            #endif
+
+            error_sending_move = 1;
         }
         
-        // Tipo de espera con sleep
-        // usleep(1000 * 1000); // 200ms
-
-        
+        // usleep(1000 * 1000);
     }
+
     free(tablero);
     
     fprintf(stderr, "[player] Terminado\n");
