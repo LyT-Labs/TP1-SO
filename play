@@ -7,36 +7,38 @@
 # Default values for height and width
 height=-1
 width=-1
-num_players=9
 delay=-1 # milliseconds
 timeout=-1 #seconds
 seed=-1 # seed for random number generation
+num_players=9
 
 # Parse arguments for height, width, and number of players
-while getopts "h:w:n:m:d:t:s" opt; do
+while getopts "h:w:d:t:s:n:mq" opt; do
     case $opt in
         m) ;;
+	    q) ;;
         h) height=$OPTARG ;;
         w) width=$OPTARG ;;
-        n) num_players=$OPTARG ;;
         d) delay=$OPTARG ;;
         t) timeout=$OPTARG ;;
         s) seed=$OPTARG ;;
-        *) echo "Usage: $0 [-h height] [-w width] [-n number_of_players]" >&2; exit 1 ;;
+	    n) num_players=$OPTARG ;;
+	    *) echo "Usage: $0 [-h height] [-w width] [-d delay] [-t timeout] [-s seed] [-n number_of_players] (default 9) [-m] to use master instead of ChompChamps [-q] to play without view " >&2; exit 1 ;;
     esac
 done
 
 # -m flag to run master instead of ChompChamps
 if [[ " $@ " =~ " -m " ]]; then
-    cmd="./master -v view -p"
+    cmd="./master"
 else
-    cmd="./ChompChamps -v view -p"
+    cmd="./ChompChamps"
 fi
 
-# Add the required number of players to the command
-for ((i = 1; i <= num_players; i++)); do
-    cmd+=" player"
-done
+# -q flag runs without view
+if [[ ! " $@ " =~ " -q " ]]; then
+    cmd+=" -v view"
+fi
+
 
 # Add the height and width options if they are set
 if [ $height -ne -1 ]; then
@@ -56,6 +58,13 @@ fi
 if [ $seed -ne -1 ]; then
     cmd+=" -s $seed"
 fi
+
+
+cmd+=" -p "
+# Add the required number of players to the command
+for ((i = 1; i <= num_players; i++)); do
+    cmd+=" player"
+done
 
 # Run the constructed command
 eval "$cmd"
