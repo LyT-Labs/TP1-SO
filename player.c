@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <poll.h> // Incluir para usar poll()
 #include <string.h>
+#include <limits.h>
 
 // #define DEBUG
 
@@ -93,6 +94,138 @@ unsigned char get_random_movement() {
     return dir;
 }
 
+unsigned char get_best_movement() {
+    int best_value = -1; // Valor más alto encontrado
+    unsigned char best_dir = 0; // Dirección hacia la mejor celda
+    int best_distance = width * height; // Distancia mínima a la mejor celda
+
+    // Recorrer todo el tablero
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int index = y * width + x;
+
+            // Ignorar celdas ocupadas o con valores no positivos
+            if (board[index] <= 0) {
+                continue;
+            }
+
+            // Calcular la distancia de Manhattan desde la posición actual
+            int distance = abs(my_x - x) + abs(my_y - y);
+
+            // Priorizar celdas con valores más altos y distancias más cortas
+            if (board[index] > best_value || (board[index] == best_value && distance < best_distance)) {
+                best_value = board[index];
+                best_distance = distance;
+
+                // Determinar la dirección hacia la celda
+                if (x > my_x && y == my_y) best_dir = 2; // Derecha
+                else if (x < my_x && y == my_y) best_dir = 6; // Izquierda
+                else if (x == my_x && y > my_y) best_dir = 4; // Abajo
+                else if (x == my_x && y < my_y) best_dir = 0; // Arriba
+                else if (x > my_x && y > my_y) best_dir = 3; // Abajo-Derecha
+                else if (x > my_x && y < my_y) best_dir = 1; // Arriba-Derecha
+                else if (x < my_x && y > my_y) best_dir = 5; // Abajo-Izquierda
+                else if (x < my_x && y < my_y) best_dir = 7; // Arriba-Izquierda
+            }
+        }
+    }
+
+    // Validar si la dirección encontrada es válida
+    if (is_valid_movement(best_dir)) {
+        return best_dir;
+    }
+
+    // Si no se encuentra una dirección válida, retornar un movimiento aleatorio
+    return get_random_movement();
+}
+
+
+#define DIRECCIONES 8
+#define PROFUNDIDAD_MAX 15
+
+const int dx[DIRECCIONES] = {  0,  1, 1, 1, 0, -1, -1, -1 };
+const int dy[DIRECCIONES] = { -1, -1, 0, 1, 1,  1,  0, -1 };
+
+int en_rango(int x, int y, int w, int h) {
+    return x >= 0 && y >= 0 && x < w && y < h;
+}
+
+int recompensa_en(int* tablero, int x, int y, int w, int h) {
+    if (!en_rango(x, y, w, h)) return 0;
+    int val = tablero[y * w + x];
+    return val > 0 ? val : 0;
+}
+
+bool esta_libre(int* tablero, int x, int y, int w, int h) {
+    return en_rango(x, y, w, h) && tablero[y * w + x] > 0;
+}
+
+int distancia_total_a_otros(GameState* estado, int x, int y, int my_id) {
+    int total = 0;
+    for (int i = 0; i < estado->player_count; i++) {
+        if (i == my_id || estado->players[i].is_blocked) continue;
+        int dx = x - estado->players[i].x;
+        int dy = y - estado->players[i].y;
+        total += dx * dx + dy * dy;
+    }
+    return total;
+}
+
+int area_explorable(int* tablero, int* visitado, int x, int y, int w, int h, int profundidad) {
+    if (profundidad <= 0 || !esta_libre(tablero, x, y, w, h) || visitado[y * w + x]) return 0;
+    visitado[y * w + x] = 1;
+    int total = 1;
+    for (int i = 0; i < DIRECCIONES; i++) {
+        int nx = x + dx[i];
+        int ny = y + dy[i];
+        total += area_explorable(tablero, visitado, nx, ny, w, h, profundidad - 1);
+    }
+    return total;
+}
+
+int dfs_camino(int* tablero, GameState* estado, int* visitado, int x, int y, int w, int h, int profundidad, int my_id, int acumulado) {
+    if (profundidad <= 0 || !esta_libre(tablero, x, y, w, h) || visitado[y * w + x]) return acumulado;
+    visitado[y * w + x] = 1;
+    int max_score = acumulado + recompensa_en(tablero, x, y, w, h);
+    for (int i = 0; i < DIRECCIONES; i++) {
+        int nx = x + dx[i];
+        int ny = y + dy[i];
+        int score = dfs_camino(tablero, estado, visitado, nx, ny, w, h, profundidad - 1, my_id, max_score);
+        if (score > max_score) max_score = score;
+    }
+    return max_score;
+}
+
+unsigned char ia_god_get_movement(GameState* estado, int* tablero, int my_id, int my_x, int my_y, int w, int h) {
+    int mejor_score = INT_MIN;
+    unsigned char mejor_dir = 255;
+
+    for (unsigned char dir = 0; dir < DIRECCIONES; dir++) {
+        int nx = my_x + dx[dir];
+        int ny = my_y + dy[dir];
+        if (!esta_libre(tablero, nx, ny, w, h)) continue;
+
+        int recompensa = recompensa_en(tablero, nx, ny, w, h);
+
+        int visitado[w * h];
+        memset(visitado, 0, sizeof(visitado));
+        int score = dfs_camino(tablero, estado, visitado, nx, ny, w, h, PROFUNDIDAD_MAX, my_id, recompensa);
+
+        memset(visitado, 0, sizeof(visitado));
+        int explorables = area_explorable(tablero, visitado, nx, ny, w, h, PROFUNDIDAD_MAX);
+        if (explorables < 20) score -= 1000; // encerrado, penaliza brutalmente
+
+        int distancia = distancia_total_a_otros(estado, nx, ny, my_id);
+        score += distancia; // alejarse de otros
+
+        if (score > mejor_score) {
+            mejor_score = score;
+            mejor_dir = dir;
+        }
+    }
+
+    return mejor_dir;
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
@@ -176,7 +309,7 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-        unsigned char dir = get_first_valid_movement();
+        unsigned char dir = ia_god_get_movement(game_state, board, my_id, my_x, my_y, width, height);
         
         // Evita pedir moverse si no ha cambiado de posición
         // A menos que me ganaron el movimiento, por ende cambió la dirección
