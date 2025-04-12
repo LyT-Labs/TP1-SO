@@ -99,29 +99,73 @@ void render_board_section(GameState* state) {
     }
 }
 
+void print_centered(const char* text, int width) {
+    int len = strlen(text);
+    if (len >= width) {
+        printf("%.*s", width, text); // Truncar si es más largo
+        return;
+    }
+    int padding = (width - len) / 2;
+    int extra = (width - len) % 2; // Por si es impar
+    printf("%*s%s%*s", padding, "", text, padding + extra, "");
+}
+
 void render_players_section(GameState* state) {
     int width = state->width;
-    // int height = state->height;
 
-    // Calcular el ancho total del tablero para centrar "TABLERO"
+    // Calcular el ancho total del tablero para centrar "JUGADORES"
     int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
     int texto_length = 9; // Longitud de la palabra "JUGADORES"
     int padding = (tablero_width - texto_length) / 2;
+
     // Imprimir la palabra "JUGADORES" centrada
     print_divider(tablero_width - padding - texto_length);
     printf("JUGADORES");
     print_divider(tablero_width - padding - texto_length);
     printf("\n");
-    // Imprimir los jugadores
 
-    
+    // Imprimir encabezados centrados
+    printf("%s", COLOR_RESET);
+    print_centered("Jugador",   20);
+    print_centered("PID",       6);
+    print_centered("Puntaje",   8);
+    print_centered("Válidos",   8);
+    print_centered("Inválidos", 12);
+    print_centered("Posición",  12);
+    print_centered("Estado", 12);
+    // print_centered("Nombre",    12);
+    printf("%s\n", COLOR_RESET);
+
+    // Imprimir los jugadores
     for (int i = 0; i < state->player_count; i++) {
         Player* jugador = &state->players[i];
-        printf("Jugador %d: %s%s%s, PID: %d, Puntaje: %u, Movimientos válidos: %u, Movimientos inválidos: %u, Posición: (%hu, %hu), Bloqueado: %s\n",
-               i, get_player_color(i), jugador->name, COLOR_RESET, jugador->pid, jugador->score,
-               jugador->valid_moves, jugador->invalid_moves,
-               jugador->x, jugador->y, jugador->is_blocked ? "Sí" : "No");
+        char name[16];
+        printf("%s", get_player_color(i));
+        snprintf(name, sizeof(name), "%s", jugador->name);
+        print_centered(name, 16);
+        print_centered(get_player_symbol(i), 4);
+        char pid[6];
+        snprintf(pid, sizeof(pid), "%d", jugador->pid);
+        print_centered(pid, 6);
+        char score[8];
+        snprintf(score, sizeof(score), "%u", jugador->score);
+        print_centered(score, 8);
+        // Imprimir el número de movimientos válidos e inválidos
+        char valid_moves[8];
+        snprintf(valid_moves, sizeof(valid_moves), "%u", jugador->valid_moves);
+        print_centered(valid_moves, 8);
+        char invalid_moves[12];
+        snprintf(invalid_moves, sizeof(invalid_moves), "%u", jugador->invalid_moves);
+        print_centered(invalid_moves, 12);
+        char position[12];
+        sprintf(position, "(%02hu,%02hu)", jugador->x, jugador->y);
+        print_centered(position, 12);
+        print_centered(jugador->is_blocked ? "🤚🏻" : "👍🏻", 12);
+        // print_centered(jugador->name, 12);
+        printf("%s\n", COLOR_RESET);
     }
+
+    // Imprimir línea divisoria final
     print_divider(tablero_width);
     printf("\n");
 }
