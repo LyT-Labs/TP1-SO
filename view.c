@@ -151,7 +151,7 @@ void render_players_section(GameState* state) {
         snprintf(score, sizeof(score), "%u", jugador->score);
         print_centered(score, 8);
         // Imprimir el número de movimientos válidos e inválidos
-        char valid_moves[8];
+        char valid_moves[3];
         snprintf(valid_moves, sizeof(valid_moves), "%u", jugador->valid_moves);
         print_centered(valid_moves, 8);
         char invalid_moves[12];
@@ -182,6 +182,12 @@ void print_state(GameState* state) {
 
 int main(int argc, char *argv[]) {
     printf("[view] Iniciando vista...\n");
+    if (argc < 3) {
+        fprintf(stderr, "Uso: %s <ancho> <alto>\n", argv[0]);
+        return 1;
+    }
+    unsigned short width = (unsigned short)atoi(argv[1]);
+    unsigned short height = (unsigned short)atoi(argv[2]);
 
     // Abrir memoria compartida del estado del juego
     int shm_fd = shm_open(SHM_STATE, O_RDONLY, 0);
@@ -190,7 +196,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    GameState* state = mmap(NULL, sizeof(GameState), PROT_READ, MAP_SHARED, shm_fd, 0);
+    GameState* state = mmap(NULL, sizeof(GameState) + sizeof(int) * width * height, PROT_READ, MAP_SHARED, shm_fd, 0);
     if (state == MAP_FAILED) {
         perror("[view] mmap state");
         return 1;
