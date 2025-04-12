@@ -24,6 +24,8 @@ int is_player_blocked = 0;
 int was_player_moved = 1;
 int error_sending_move = 0;
 
+unsigned char last_dir = 0;
+
 bool is_valid_movement(unsigned char dir) {
     int new_x = my_x;
     int new_y = my_y;
@@ -173,15 +175,17 @@ int main(int argc, char* argv[]) {
         if (is_player_blocked) {
             break;
         }
+
+        unsigned char dir = get_first_valid_movement();
         
         // Evita pedir moverse si no ha cambiado de posición
+        // A menos que me ganaron el movimiento, por ende cambió la dirección
         // Excepto que sea porque el pipe estaba lleno, ahí sí se tiene que mover
-        if (!was_player_moved && !error_sending_move) {
+        if (!was_player_moved && dir == last_dir && !error_sending_move) {
             continue;
         }
         error_sending_move = 0;
         
-        unsigned char dir = get_first_valid_movement();
 
         // Validar si el pipe está listo para escritura
         struct pollfd pfd;
@@ -195,7 +199,7 @@ int main(int argc, char* argv[]) {
             #endif
 
             error_sending_move = 1;
-            continue; // Saltar esta iteración del loop
+            continue;
         }
 
         // Enviar movimiento al pipe
@@ -206,14 +210,20 @@ int main(int argc, char* argv[]) {
             #endif
 
             error_sending_move = 1;
+            continue;
         }
+        last_dir = dir;
+
         
         // usleep(1000 * 1000);
     }
 
     free(board);
     
-    fprintf(stderr, "[player] Terminado\n");
+    #ifdef DEBUG
+        fprintf(stderr, "[player] Terminado\n");
+    #endif
+    
     // cerrar memoria compartida
     if(munmap(game_state, size) == -1) {
         fprintf(stderr, "[player] Error al unmapear game_state\n");
