@@ -6,9 +6,6 @@
 #include <stdlib.h>
 #include "game_state.h"
 
-#define SHM_STATE "/game_state"
-#define SHM_SYNC "/game_sync"
-
 
 #define COLOR_RESET "\033[0m" // Reset
 #define COLOR_PLAYER_1 "\033[41m" // Fondo rojo
@@ -65,16 +62,16 @@ const char* get_player_color(int player_id) {
 }
 
 
-void imprimir_divisor(int width) {
+void print_divider(int width) {
     for (int i = 0; i < width; i++) {
         printf(SYMBOL_DIVIDER);
     }
 }
 
 
-void renderizar_tablero(GameState* estado) {
-    int width = estado->width;
-    int height = estado->height;
+void render_board_section(GameState* state) {
+    int width = state->width;
+    int height = state->height;
 
     // Calcular el ancho total del tablero para centrar "TABLERO"
     int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
@@ -82,16 +79,16 @@ void renderizar_tablero(GameState* estado) {
     int padding = (tablero_width - texto_length) / 2;
 
     // Imprimir la palabra "TABLERO" centrada
-    imprimir_divisor(tablero_width - padding - texto_length);
+    print_divider(tablero_width - padding - texto_length);
     printf("TABLERO");
-    imprimir_divisor(tablero_width - padding - texto_length);
+    print_divider(tablero_width - padding - texto_length);
     printf("\n");
 
 
     // Imprimir las filas del tablero
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            int cell_value = estado->tablero[y * width + x];
+            int cell_value = state->board[y * width + x];
             if (cell_value <= 0) {
                 printf("%s %s %s", get_player_color(-cell_value), get_player_symbol(-cell_value), COLOR_RESET);
             } else {
@@ -102,39 +99,39 @@ void renderizar_tablero(GameState* estado) {
     }
 }
 
-void renderizar_jugadores(GameState* estado) {
-    int width = estado->width;
-    int height = estado->height;
+void render_players_section(GameState* state) {
+    int width = state->width;
+    int height = state->height;
 
     // Calcular el ancho total del tablero para centrar "TABLERO"
     int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
     int texto_length = 9; // Longitud de la palabra "JUGADORES"
     int padding = (tablero_width - texto_length) / 2;
     // Imprimir la palabra "JUGADORES" centrada
-    imprimir_divisor(tablero_width - padding - texto_length);
+    print_divider(tablero_width - padding - texto_length);
     printf("JUGADORES");
-    imprimir_divisor(tablero_width - padding - texto_length);
+    print_divider(tablero_width - padding - texto_length);
     printf("\n");
     // Imprimir los jugadores
 
     
-    for (int i = 0; i < estado->cantidad_jugadores; i++) {
-        Player* jugador = &estado->jugadores[i];
+    for (int i = 0; i < state->player_count; i++) {
+        Player* jugador = &state->players[i];
         printf("Jugador %d: %s%s%s, PID: %d, Puntaje: %u, Movimientos válidos: %u, Movimientos inválidos: %u, Posición: (%hu, %hu), Bloqueado: %s\n",
-               i, get_player_color(i), jugador->nombre, COLOR_RESET, jugador->pid, jugador->puntaje,
+               i, get_player_color(i), jugador->name, COLOR_RESET, jugador->pid, jugador->score,
                jugador->valid_moves, jugador->invalid_moves,
-               jugador->x, jugador->y, jugador->bloqueado ? "Sí" : "No");
+               jugador->x, jugador->y, jugador->is_blocked ? "Sí" : "No");
     }
-    imprimir_divisor(tablero_width);
+    print_divider(tablero_width);
     printf("\n");
 }
 
 
 
-void mostrar_estado(GameState* estado) {
+void print_state(GameState* state) {
     
-    renderizar_tablero(estado);
-    renderizar_jugadores(estado);
+    render_board_section(state);
+    render_players_section(state);
 
     fflush(stdout);
 }
@@ -170,18 +167,18 @@ int main(int argc, char *argv[]) {
 
     printf("[view] Memorias mapeadas correctamente.\n");
 
-    while (!state->terminado) {
+    while (!state->is_finished) {
         // Mover el cursor al inicio de la pantalla y limpiar desde ahí
         
         // Esperar a que el máster indique que hay algo que imprimir
-        sem_wait(&sync->A);
+        sem_wait(&sync->changes_available);
         
         // Leer el estado del juego
         printf("\033[H\033[J"); // \033[H mueve el cursor al inicio, \033[J limpia desde el cursor hasta el final
-        mostrar_estado(state);
+        print_state(state);
         
         // Indicar al máster que ya imprimió
-        sem_post(&sync->B);
+        sem_post(&sync->print_done);
     }
 
     printf("[view] Juego terminado.\n");
