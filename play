@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# This script runs ./ChompChamps or ./master with -h <height> -w <width> -v view {-p player -p player ...}
+# where <height> and <width> are optional args of the script, defaulting in 10, and the times -p player appears is given via an arg, the number of players
+# and the script to run is ChompChamps or master depending on if the -m flag is present
+
+# Default values for height and width
+height=10
+width=10
+num_players=9
+
+# Parse arguments for height, width, and number of players
+while getopts "h:w:n:m" opt; do
+    case $opt in
+        m) ;;
+        h) height=$OPTARG ;;
+        w) width=$OPTARG ;;
+        n) num_players=$OPTARG ;;
+        *) echo "Usage: $0 [-h height] [-w width] [-n number_of_players]" >&2; exit 1 ;;
+    esac
+done
+
+# -m flag to run master instead of ChompChamps
+if [[ " $@ " =~ " -m " ]]; then
+    cmd="./master -h $height -w $width -v view -p"
+else
+    cmd="./ChompChamps -h $height -w $width -v view -p"
+fi
+
+# Add the required number of players to the command
+for ((i = 1; i <= num_players; i++)); do
+    cmd+=" player"
+done
+
+# Run the constructed command
+eval "$cmd"
