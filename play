@@ -5,32 +5,57 @@
 # and the script to run is ChompChamps or master depending on if the -m flag is present
 
 # Default values for height and width
-height=10
-width=10
+height=-1
+width=-1
 num_players=9
+delay=-1 # milliseconds
+timeout=-1 #seconds
+seed=-1 # seed for random number generation
 
 # Parse arguments for height, width, and number of players
-while getopts "h:w:n:m" opt; do
+while getopts "h:w:n:m:d:t:s" opt; do
     case $opt in
         m) ;;
         h) height=$OPTARG ;;
         w) width=$OPTARG ;;
         n) num_players=$OPTARG ;;
+        d) delay=$OPTARG ;;
+        t) timeout=$OPTARG ;;
+        s) seed=$OPTARG ;;
         *) echo "Usage: $0 [-h height] [-w width] [-n number_of_players]" >&2; exit 1 ;;
     esac
 done
 
 # -m flag to run master instead of ChompChamps
 if [[ " $@ " =~ " -m " ]]; then
-    cmd="./master -h $height -w $width -v view -p"
+    cmd="./master -v view -p"
 else
-    cmd="./ChompChamps -h $height -w $width -v view -p"
+    cmd="./ChompChamps -v view -p"
 fi
 
 # Add the required number of players to the command
 for ((i = 1; i <= num_players; i++)); do
     cmd+=" player"
 done
+
+# Add the height and width options if they are set
+if [ $height -ne -1 ]; then
+    cmd+=" -h $height"
+fi
+if [ $width -ne -1 ]; then
+    cmd+=" -w $width"
+fi
+
+# Add the delay, timeout, and seed options if they are set
+if [ $delay -ne -1 ]; then
+    cmd+=" -d $delay"
+fi
+if [ $timeout -ne -1 ]; then
+    cmd+=" -t $timeout"
+fi
+if [ $seed -ne -1 ]; then
+    cmd+=" -s $seed"
+fi
 
 # Run the constructed command
 eval "$cmd"

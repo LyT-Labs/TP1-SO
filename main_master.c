@@ -36,6 +36,10 @@
 #define SEED_DEFAULT time(NULL)
 #define VIEW_DEFAULT NULL
 
+// Esto no tiene tanto sentido creo yo, pero parece que el enunciado lo pide así
+// Si está definido, un delay de 4 segundos se vuelve de 6 si la vista tarda 2 segundos en imprimir
+#define DELAY_INCLUDES_VIEW
+
 
 unsigned short width;
 unsigned short height;
@@ -101,6 +105,10 @@ void validate_args(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "-v") == 0 && i + 1 < argc) {
             view = argv[++i];
         } else if (strcmp(argv[i], "-p") == 0) {
+            if (player_count >= MAX_PLAYERS) {
+                fprintf(stderr, "Número máximo de jugadores alcanzado: %d\n", MAX_PLAYERS);
+                exit(EXIT_FAILURE);
+            }
             while (i + 1 < argc && player_count < MAX_PLAYERS) {
                 player_paths[player_count++] = argv[++i];
             }
@@ -192,7 +200,7 @@ void init_game_state(GameState* state) {
 
 void init_sync_state(SyncState* sync) {
     sem_init(&sync->changes_available, 1, 0);
-    sem_init(&sync->print_done, 1, 0); 
+    sem_init(&sync->print_done, 1, 0);
     sem_init(&sync->starvation_mutex, 1, 1);
     sem_init(&sync->game_state_mutex, 1, 0);
     sem_init(&sync->reader_count_mutex, 1, 1);
@@ -412,14 +420,18 @@ int main(int argc, char* argv[]) {
 
     printf("Máster listo. Memoria y semáforos inicializados.\n");
 
-    // ... Aquí iría la lógica de creación de jugadores, control del juego, etc.
 
     create_players(state);
     create_view();
 
-    // Permite a la vista imprimir el estado inicial, espero a que termine para continuar
     sem_post(&sync->changes_available);
     sem_post(&sync->game_state_mutex);
+
+    #ifdef DELAY_INCLUDES_VIEW
+        sem_wait(&sync->print_done);
+    #endif
+
+    usleep(delay * 1000); // Espera el delay antes de continuar
 
     while (!state->is_finished) {
 
@@ -476,14 +488,13 @@ int main(int argc, char* argv[]) {
             }
         }
 
+
+        // Si la vista actualiza "asincrónicamente" mientras leemos el pipe, solo la tengo que esperar al modificar el estado
+        #ifndef DELAY_INCLUDES_VIEW
+            sem_wait(&sync->print_done);
+        #endif
         
-        // VER EN QUÉ DIRECCIÓN MOVERSE, PROBABLEMENTE CON UN SELECT CON LOS PIPES
-        // unsigned char dir = rand() % 8; // Selecciona una dirección aleatoria (0-7)
-        // int player_id = rand() % player_count; // Selecciona un jugador aleatorio para mover
-
-
         // Para modificar el estado del juego, el máster debe tener el mutex (avisa con el de starvation que quiere entrar)
-        sem_wait(&sync->print_done);
         sem_wait(&sync->starvation_mutex);
         sem_wait(&sync->game_state_mutex);
         sem_post(&sync->starvation_mutex);
@@ -502,8 +513,14 @@ int main(int argc, char* argv[]) {
         sem_post(&sync->changes_available);
         sem_post(&sync->game_state_mutex);
 
+        // Si quiero que la vista bloquee el master y que el delay se sume a lo que tarde la vista, tengo que esperar acá a que imprima
+        #ifdef DELAY_INCLUDES_VIEW
+            sem_wait(&sync->print_done);
+        #endif
+
         usleep(delay * 1000);
     }
+
 
     for (int i = 0; i < player_count; i++) {
         int status;

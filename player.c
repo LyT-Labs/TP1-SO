@@ -226,19 +226,27 @@ int main(int argc, char* argv[]) {
     
     // cerrar memoria compartida
     if(munmap(game_state, size) == -1) {
-        fprintf(stderr, "[player] Error al unmapear game_state\n");
+        #ifdef DEBUG
+            fprintf(stderr, "[player] Error al unmapear game_state: %s\n", strerror(errno));
+        #endif
         exit(1);
     }
     if(munmap(sync, sizeof(SyncState)) == -1) {
-        fprintf(stderr, "[player] Error al unmapear sync\n");
+        #ifdef DEBUG
+            fprintf(stderr, "[player] Error al unmapear sync: %s\n", strerror(errno));
+        #endif
         exit(1);
     }
     if(close(shm_fd) == -1) {
-        fprintf(stderr, "[player] Error al cerrar shm_fd\n");
+        #ifdef DEBUG
+            fprintf(stderr, "[player] Error al cerrar shm_fd: %s\n", strerror(errno));
+        #endif
         exit(1);
     }
     if(close(shm_sync_fd) == -1) {
-        fprintf(stderr, "[player] Error al cerrar shm_sync_fd\n");
+        #ifdef DEBUG
+            fprintf(stderr, "[player] Error al cerrar shm_sync_fd: %s\n", strerror(errno));
+        #endif
         exit(1);
     }
     
