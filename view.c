@@ -101,7 +101,7 @@ void render_board_section(GameState* state) {
 
 void render_players_section(GameState* state) {
     int width = state->width;
-    int height = state->height;
+    // int height = state->height;
 
     // Calcular el ancho total del tablero para centrar "TABLERO"
     int tablero_width = width * 4; // Cada celda tiene 3 espacios, más los bordes
