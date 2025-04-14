@@ -452,6 +452,7 @@ int main(int argc, char* argv[]) {
 
     create_players(state);
     create_view();
+    update_last_msg_time();   // guarda el tiempo actual para después calcular el timeout
 
     if(view) sem_post(&sync->changes_available);
     sem_post(&sync->game_state_mutex);
