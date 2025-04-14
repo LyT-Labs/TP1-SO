@@ -28,8 +28,8 @@
 #define WIDTH_MIN 10
 #define HEIGHT_MIN 10
 
-#define WIDTH_MAX 100
-#define HEIGHT_MAX 100
+// #define WIDTH_MAX 100
+// #define HEIGHT_MAX 100
 
 #define MAX_PLAYERS 9
 #define MAX_NAME 16
@@ -149,12 +149,12 @@ void validate_args(int argc, char* argv[]) {
     }
 
     // Validar parámetros
-    if (width < WIDTH_MIN || width > WIDTH_MAX) {
-        fprintf(stderr, "El ancho del tablero debe estar entre %d y %d\n", WIDTH_MIN, WIDTH_MAX);
+    if (width < WIDTH_MIN) {
+        fprintf(stderr, "El ancho del tablero debe ser mayor a %d.\n", WIDTH_MIN);
         exit(EXIT_FAILURE);
     }
-    if (height < HEIGHT_MIN || height > HEIGHT_MAX) {
-        fprintf(stderr, "El alto del tablero debe estar entre %d y %d\n", HEIGHT_MIN, HEIGHT_MAX);
+    if (height < HEIGHT_MIN) {
+        fprintf(stderr, "El alto del tablero debe ser mayor a %d.\n", HEIGHT_MIN);
         exit(EXIT_FAILURE);
     }
     if (player_count == 0) {
