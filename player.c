@@ -141,7 +141,7 @@ unsigned char get_best_movement() {
 
 
 #define DIRECCIONES 8
-#define PROFUNDIDAD_MAX 15
+#define PROFUNDIDAD_MAX 1000
 
 const int dx[DIRECCIONES] = {  0,  1, 1, 1, 0, -1, -1, -1 };
 const int dy[DIRECCIONES] = { -1, -1, 0, 1, 1,  1,  0, -1 };
@@ -183,16 +183,40 @@ int area_explorable(int* tablero, int* visitado, int x, int y, int w, int h, int
     return total;
 }
 
-int dfs_camino(int* tablero, GameState* estado, int* visitado, int x, int y, int w, int h, int profundidad, int my_id, int acumulado) {
-    if (profundidad <= 0 || !esta_libre(tablero, x, y, w, h) || visitado[y * w + x]) return acumulado;
+int bfs_camino(int* tablero, GameState* estado, int* visitado, int x, int y, int w, int h, int profundidad, int my_id, int acumulado) {
+    int max_score = acumulado;
+    int queue[w * h][3]; // Queue to store {x, y, depth}
+    int front = 0, rear = 0;
+
+    queue[rear][0] = x;
+    queue[rear][1] = y;
+    queue[rear][2] = profundidad;
+    rear++;
     visitado[y * w + x] = 1;
-    int max_score = acumulado + recompensa_en(tablero, x, y, w, h);
-    for (int i = 0; i < DIRECCIONES; i++) {
-        int nx = x + dx[i];
-        int ny = y + dy[i];
-        int score = dfs_camino(tablero, estado, visitado, nx, ny, w, h, profundidad - 1, my_id, max_score);
-        if (score > max_score) max_score = score;
+
+    while (front < rear) {
+        int cx = queue[front][0];
+        int cy = queue[front][1];
+        int depth = queue[front][2];
+        front++;
+
+        max_score += recompensa_en(tablero, cx, cy, w, h);
+
+        if (depth <= 0) continue;
+
+        for (int i = 0; i < DIRECCIONES; i++) {
+            int nx = cx + dx[i];
+            int ny = cy + dy[i];
+            if (esta_libre(tablero, nx, ny, w, h) && !visitado[ny * w + nx]) {
+                visitado[ny * w + nx] = 1;
+                queue[rear][0] = nx;
+                queue[rear][1] = ny;
+                queue[rear][2] = depth - 1;
+                rear++;
+            }
+        }
     }
+
     return max_score;
 }
 
@@ -201,6 +225,7 @@ unsigned char ia_god_get_movement(GameState* estado, int* tablero, int my_id, in
     unsigned char mejor_dir = 255;
 
     for (unsigned char dir = 0; dir < DIRECCIONES; dir++) {
+        dir = (dir + 2) % 8; // Cambia la dirección para que sea más fácil de entender
         int nx = my_x + dx[dir];
         int ny = my_y + dy[dir];
         if (!esta_libre(tablero, nx, ny, w, h)) continue;
@@ -209,14 +234,14 @@ unsigned char ia_god_get_movement(GameState* estado, int* tablero, int my_id, in
 
         int visitado[w * h];
         memset(visitado, 0, sizeof(visitado));
-        int score = dfs_camino(tablero, estado, visitado, nx, ny, w, h, PROFUNDIDAD_MAX, my_id, recompensa);
+        int score = bfs_camino(tablero, estado, visitado, nx, ny, w, h, PROFUNDIDAD_MAX, my_id, 0);
 
         memset(visitado, 0, sizeof(visitado));
-        int explorables = area_explorable(tablero, visitado, nx, ny, w, h, PROFUNDIDAD_MAX);
-        if (explorables < 20) score -= 1000; // encerrado, penaliza brutalmente
+        // int explorables = area_explorable(tablero, visitado, nx, ny, w, h, PROFUNDIDAD_MAX);
+        // if (explorables < 20) score -= 1000; // encerrado, penaliza brutalmente
 
-        int distancia = distancia_total_a_otros(estado, nx, ny, my_id);
-        score += distancia; // alejarse de otros
+        // int distancia = distancia_total_a_otros(estado, nx, ny, my_id);
+        // score += distancia; // alejarse de otros
 
         if (score > mejor_score) {
             mejor_score = score;
@@ -226,6 +251,137 @@ unsigned char ia_god_get_movement(GameState* estado, int* tablero, int my_id, in
 
     return mejor_dir;
 }
+// int distancia(int x1, int y1, int x2, int y2) {
+//     int dx = x2 - x1;
+//     int dy = y2 - y1;
+//     return dx * dx + dy * dy;
+// }
+
+// unsigned char direccion_hacia(int x1, int y1, int x2, int y2) {
+//     if (x2 > x1 && y2 < y1) return 1;
+//     if (x2 > x1 && y2 == y1) return 2;
+//     if (x2 > x1 && y2 > y1) return 3;
+//     if (x2 == x1 && y2 > y1) return 4;
+//     if (x2 < x1 && y2 > y1) return 5;
+//     if (x2 < x1 && y2 == y1) return 6;
+//     if (x2 < x1 && y2 < y1) return 7;
+//     if (x2 == x1 && y2 < y1) return 0;
+//     return 255;
+// }
+// int contar_libres_en_linea(int* tablero, int x, int y, int dx, int dy, int w, int h) {
+//     int libres = 0;
+//     for (int i = 1; i < 10; i++) {
+//         int nx = x + i * dx;
+//         int ny = y + i * dy;
+//         if (!esta_libre(tablero, nx, ny, w, h)) break;
+//         libres++;
+//     }
+//     return libres;
+// }
+
+// unsigned char ia_esquina_exploradora(GameState* estado, int* tablero, int my_id, int my_x, int my_y, int w, int h) {
+//     // Paso 1: ir a la esquina más cercana
+//     int esquinas[4][2] = { {0, 0}, {w - 1, 0}, {w - 1, h - 1}, {0, h - 1} };
+//     int min_dist = INT_MAX;
+//     int* mejor_esquina = NULL;
+
+//     for (int i = 0; i < 4; i++) {
+//         int d = distancia(my_x, my_y, esquinas[i][0], esquinas[i][1]);
+//         if (d < min_dist) {
+//             min_dist = d;
+//             mejor_esquina = esquinas[i];
+//         }
+//     }
+
+//     int destino_x = mejor_esquina[0];
+//     int destino_y = mejor_esquina[1];
+
+//     if (my_x != destino_x || my_y != destino_y) {
+//         unsigned char dir = direccion_hacia(my_x, my_y, destino_x, destino_y);
+//         int nx = my_x + dx[dir];
+//         int ny = my_y + dy[dir];
+//         if (esta_libre(tablero, nx, ny, w, h)) return dir;
+//     }
+
+//     // Paso 2: elegir dirección con más celdas libres rectas
+//     int max_libres = -1;
+//     unsigned char mejor_dir = 255;
+//     int dir_candidatas[] = { 2, 4, 6, 0 }; // derecha, abajo, izquierda, arriba
+
+//     for (int i = 0; i < 4; i++) {
+//         int dir = dir_candidatas[i];
+//         int libres = contar_libres_en_linea(tablero, my_x, my_y, dx[dir], dy[dir], w, h);
+//         if (libres > max_libres) {
+//             max_libres = libres;
+//             mejor_dir = dir;
+//         }
+//     }
+
+//     // Intentar ir en la dirección más libre
+//     int nx = my_x + dx[mejor_dir];
+//     int ny = my_y + dy[mejor_dir];
+//     if (esta_libre(tablero, nx, ny, w, h)) return mejor_dir;
+
+//     // Buscar alternativa
+//     for (unsigned char d = 0; d < DIRECCIONES; d++) {
+//         nx = my_x + dx[d];
+//         ny = my_y + dy[d];
+//         if (esta_libre(tablero, nx, ny, w, h)) return d;
+//     }
+
+//     return 255;
+// }
+
+
+// // 0: →, 1: ↓, 2: ←, 3: ↑
+// const int espiral_dx[] = {1, 0, -1, 0};
+// const int espiral_dy[] = {0, 1, 0, -1};
+
+// unsigned char mover_hacia(int x1, int y1, int x2, int y2) {
+//     if (x2 > x1 && y2 == y1) return 2;
+//     if (x2 < x1 && y2 == y1) return 6;
+//     if (x2 == x1 && y2 > y1) return 4;
+//     if (x2 == x1 && y2 < y1) return 0;
+//     if (x2 > x1 && y2 > y1) return 3;
+//     if (x2 > x1 && y2 < y1) return 1;
+//     if (x2 < x1 && y2 > y1) return 5;
+//     if (x2 < x1 && y2 < y1) return 7;
+//     return 255;
+// }
+
+// unsigned char ia_espiral(GameState* estado, int* tablero, int my_id, int my_x, int my_y, int w, int h) {
+//     static int dir = 0;  // dirección actual (0=→, 1=↓, 2=←, 3=↑)
+//     static int pasos = 1; // pasos a dar en esa dirección
+//     static int contador = 0; // pasos dados
+//     static int veces = 0; // cuántas veces se repitió una dirección
+
+//     int nx = my_x + espiral_dx[dir];
+//     int ny = my_y + espiral_dy[dir];
+
+//     if (esta_libre(tablero, nx, ny, w, h)) {
+//         contador++;
+//         if (contador >= pasos) {
+//             contador = 0;
+//             dir = (dir + 1) % 4;
+//             veces++;
+//             if (veces == 2) {
+//                 pasos++;
+//                 veces = 0;
+//             }
+//         }
+//         return mover_hacia(my_x, my_y, nx, ny);
+//     }
+
+//     // si está bloqueado, buscar movimiento alternativo válido
+//     for (unsigned char d = 0; d < DIRECCIONES; d++) {
+//         int ax = my_x + dx[d];
+//         int ay = my_y + dy[d];
+//         if (esta_libre(tablero, ax, ay, w, h)) return d;
+//     }
+
+//     return 255;
+// }
+
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
