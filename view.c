@@ -15,6 +15,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <string.h>
+#include <limits.h>
 
 #include "game_state.h"
 
@@ -73,6 +74,44 @@ const char* get_player_color(int player_id) {
         case 7: return COLOR_PLAYER_8;
         case 8: return COLOR_PLAYER_9;
         default: return COLOR_RESET; // Sin color
+    }
+}
+
+void determine_winner(GameState* state, bool winners[]) {
+    int best_player = -1;
+    unsigned int best_score = 0;
+    unsigned int best_valid_moves = UINT_MAX;
+    unsigned int best_invalid_moves = UINT_MAX;
+
+    // Initialize the winners array
+    for (int i = 0; i < state->player_count; i++) {
+        winners[i] = false;
+    }
+
+    // Determine the best player based on the criteria
+    for (int i = 0; i < state->player_count; i++) {
+        Player* player = &state->players[i];
+
+        if (player->score > best_score ||
+            (player->score == best_score && player->valid_moves < best_valid_moves) ||
+            (player->score == best_score && player->valid_moves == best_valid_moves && player->invalid_moves < best_invalid_moves)) {
+            best_score = player->score;
+            best_valid_moves = player->valid_moves;
+            best_invalid_moves = player->invalid_moves;
+            best_player = i;
+        }
+    }
+
+    // Mark the winner or winners in case of a tie
+    if (best_player != -1) {
+        for (int i = 0; i < state->player_count; i++) {
+            Player* player = &state->players[i];
+            if (player->score == best_score &&
+                player->valid_moves == best_valid_moves &&
+                player->invalid_moves == best_invalid_moves) {
+                winners[i] = true;
+            }
+        }
     }
 }
 
@@ -144,13 +183,13 @@ void print_centered(const char* text, int width) {
 void render_players_section(GameState* state) {
     // Imprimir la palabra "JUGADORES" centrada
     printf("\n\n%s", BOLD);
-    print_divider_with_title(24+15*6, "JUGADORES");
+    print_divider_with_title(26+15*6, "JUGADORES");
     printf("%s\n", RESET);
 
     // Imprimir encabezados centrados
     printf("%s", RESET);
     printf("%s", BOLD);
-    print_centered("Jugador",   24);
+    print_centered("Jugador",   26);
     print_centered("PID",       15);
     print_centered("Puntaje",   15);
     print_centered("Validos",   15);
@@ -159,6 +198,9 @@ void render_players_section(GameState* state) {
     print_centered("Bloqueado", 15);
     // print_centered("Nombre",    12);
     printf("%s\n", RESET);
+
+    bool winners[MAX_PLAYERS] = {false};
+    determine_winner(state, winners);
 
     // Imprimir los jugadores
     for (int i = 0; i < state->player_count; i++) {
@@ -169,6 +211,7 @@ void render_players_section(GameState* state) {
         snprintf(name, sizeof(name), "%s", jugador->name);
         printf("%8s  ", get_player_symbol(i));
         printf("%-16s", name);
+        printf("%s", winners[i] ? "🏆" : "  ");
         
         char pid[15];
         snprintf(pid, sizeof(pid), "%d", jugador->pid);
@@ -197,7 +240,7 @@ void render_players_section(GameState* state) {
     }
 
     // Imprimir línea divisoria final
-    print_divider(24+15*6);
+    print_divider(26+15*6);
     printf("\n");
 }
 
