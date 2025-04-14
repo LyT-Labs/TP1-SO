@@ -41,9 +41,12 @@
 #define SEED_DEFAULT time(NULL)
 #define VIEW_DEFAULT NULL
 
-// Esto no tiene tanto sentido creo yo, pero parece que el enunciado lo pide así
 // Si está definido, un delay de 4 segundos se vuelve de 6 si la vista tarda 2 segundos en imprimir
-// #define DELAY_INCLUDES_VIEW
+#define DELAY_INCLUDES_VIEW
+// Si esto es true, si luego del delay/vista el timeout pasó, se termina el juego indistintamente de si hay movimientos
+// Si no, si mientras la vista imprimía hay un movimiento, dicho movimiento se toma igual, y solo se corta si no hubo movimientos en ese periodo
+// Lo segundo parece más razonable considerando que la intención del timeout parece ser cortar el juego si no hay movimientos, no si la vista tarda mucho...
+#define TIMEOUT_INCLUDES_DELAY true
 
 
 // Acá hay algo oscuro, por alguna razón desconocida para los integrantes del grupo,
@@ -490,7 +493,7 @@ int main(int argc, char* argv[]) {
         if (ready < 0) {
             perror("select");
             break;
-        } else if (ready == 0 || remaining_timeout == 0) {
+        } else if (ready == 0 || (remaining_timeout == 0 && TIMEOUT_INCLUDES_DELAY)) {
             // Timeout, no hay movimientos disponibles
             printf("Timeout, no hay movimientos disponibles.\n");
             no_moves_found = true;
