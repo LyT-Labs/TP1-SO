@@ -1,4 +1,7 @@
 # TP1-SO
+
+![preview](./preview.png)
+
 ## Introducción
 El objetivo del trabajo consiste en desarrollar 3 programas parte de un juego cuyos procesos se comuniquen entre sí vía shared memory y pipes siguiendo este esquema:
 
