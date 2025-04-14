@@ -256,7 +256,7 @@ void create_players(GameState* state) {
             dup2(pipefd[1], STDOUT_FILENO); // Redirige stdout al pipe
             close(pipefd[1]);
 
-            setgid(1000); // Cambia el grupo del proceso
+            setuid(1000); // Cambia el usuario del proceso
             
 
             char *ancho_str, *alto_str;
@@ -297,7 +297,7 @@ void create_view() {
     }
 
     if (pid == 0) {
-        setgid(1000); // Cambia el grupo del proceso
+        setuid(1000); // Cambia el usuario del proceso
 
         char ancho_str[8], alto_str[8];
         snprintf(ancho_str, sizeof(ancho_str), "%hu", width);
