@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <poll.h> // Incluir para usar poll()
 #include <string.h>
+#include <limits.h>
 
 // #define DEBUG
 
@@ -91,6 +92,87 @@ unsigned char get_random_movement() {
         dir = rand() % 8; // Generar dirección aleatoria (0-7)
     } while (!is_valid_movement(dir));
     return dir;
+}
+
+#define DIRECTIONS 8
+#define MAX_DEPTH 1000
+
+const int dx[DIRECTIONS] = {  0,  1, 1, 1, 0, -1, -1, -1 };
+const int dy[DIRECTIONS] = { -1, -1, 0, 1, 1,  1,  0, -1 };
+
+int in_range(int x, int y, int w, int h) {
+    return x >= 0 && y >= 0 && x < w && y < h;
+}
+
+int reward_at(int* board, int x, int y, int w, int h) {
+    if (!in_range(x, y, w, h)) return 0;
+    int val = board[y * w + x];
+    return val > 0 ? val : 0;
+}
+
+bool is_free(int* board, int x, int y, int w, int h) {
+    return in_range(x, y, w, h) && board[y * w + x] > 0;
+}
+
+int bfs(int* board, GameState* state, int* visited, int x, int y, int w, int h, int depth, int my_id, int accumulated) {
+    int max_score = accumulated;
+    int queue[w * h][3];
+    int front = 0, rear = 0;
+
+    queue[rear][0] = x;
+    queue[rear][1] = y;
+    queue[rear][2] = depth;
+    rear++;
+    visited[y * w + x] = 1;
+
+    while (front < rear) {
+        int cx = queue[front][0];
+        int cy = queue[front][1];
+        int current_depth = queue[front][2];
+        front++;
+
+        max_score += reward_at(board, cx, cy, w, h);
+
+        if (current_depth <= 0) continue;
+
+        for (int i = 0; i < DIRECTIONS; i++) {
+            int nx = cx + dx[i];
+            int ny = cy + dy[i];
+            if (is_free(board, nx, ny, w, h) && !visited[ny * w + nx]) {
+                visited[ny * w + nx] = 1;
+                queue[rear][0] = nx;
+                queue[rear][1] = ny;
+                queue[rear][2] = current_depth - 1;
+                rear++;
+            }
+        }
+    }
+
+    return max_score;
+}
+
+
+// Algoritmo GOD, bah maomeno, no es mucho pero es trabajo honesto
+unsigned char ia_god_get_movement(GameState* state, int* board, int my_id, int my_x, int my_y, int w, int h) {
+    int best_score = INT_MIN;
+    unsigned char best_dir = 255;
+
+    for (unsigned char dir = 0; dir < DIRECTIONS; dir++) {
+        dir = (dir + 2) % 8; 
+        int nx = my_x + dx[dir];
+        int ny = my_y + dy[dir];
+        if (!is_free(board, nx, ny, w, h)) continue;
+
+        int visited[w * h];
+        memset(visited, 0, sizeof(visited));
+        int score = bfs(board, state, visited, nx, ny, w, h, MAX_DEPTH, my_id, 0);
+
+        if (score > best_score) {
+            best_score = score;
+            best_dir = dir;
+        }
+    }
+    return best_dir;
 }
 
 
@@ -176,7 +258,8 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-        unsigned char dir = get_first_valid_movement();
+        unsigned char dir = ia_god_get_movement(game_state, board, my_id, my_x, my_y, width, height); // <-- La que "mejor funciona"
+        // unsigned char dir = get_first_valid_movement();  // <-- Otra opción de player que sea random
         
         // Evita pedir moverse si no ha cambiado de posición
         // A menos que me ganaron el movimiento, por ende cambió la dirección
