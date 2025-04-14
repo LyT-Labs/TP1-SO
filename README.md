@@ -2,6 +2,7 @@
 ## Introducción
 El objetivo del trabajo consiste en desarrollar 3 programas parte de un juego cuyos procesos se comuniquen entre sí vía shared memory y pipes siguiendo este esquema:
 
+![so esquema](./so-esquema.png)
 A grandes rasgos, el proceso Master es quien controla la shared memory y se encarga de gestionar el juego, la Vista se encarga de mostrar el estado del juego en la pantalla, y los Players juegan pidiéndole al Master moverse.
 
 ## Instrucciones de compilación y ejecución
