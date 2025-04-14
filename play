@@ -12,6 +12,11 @@ timeout=-1 #seconds
 seed=-1 # seed for random number generation
 num_players=9
 
+if [ "$#" -eq 1 ] && [ "$1" == "--help" ]; then
+	echo "Usage: $0 [-h height] [-w width] [-d delay] [-t timeout] [-s seed] [-n number_of_players] (default 9) [-m] to use master instead of ChompChamps [-q] to play without view "
+    exit 1
+fi
+
 # Parse arguments for height, width, and number of players
 while getopts "h:w:d:t:s:n:mq" opt; do
     case $opt in
