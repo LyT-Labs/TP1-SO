@@ -242,11 +242,19 @@ void init_sync_state(SyncState* sync) {
 void create_players(GameState* state) {
     for (int i = 0; i < player_count; i++) {
         int pipefd[2];
+
+
         if (pipe(pipefd) == -1) {
             perror("pipe");
             exit(1);
         }
-
+        char fifo_path[20];
+        snprintf(fifo_path, sizeof(fifo_path), "/tmp/pipe_player_%d", i);
+        if(mkfifo(fifo_path, 0666)) // Crea un FIFO para el jugador
+        {
+            perror("mkfifo");
+            exit(1);
+        }
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
@@ -255,9 +263,18 @@ void create_players(GameState* state) {
 
         if (pid == 0) {
             // Proceso jugador
-            close(pipefd[0]); // Cierra lectura
-            dup2(pipefd[1], STDOUT_FILENO); // Redirige stdout al pipe
-            close(pipefd[1]);
+            // close(pipefd[0]); // Cierra lectura
+            int fd = open(fifo_path, O_WRONLY); // Abre el FIFO para escritura
+            if (fd == -1) {
+                perror("open fifo");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO); // Redirige stdout al pipe
+            // close(pipefd[1]);
+            if (close(fd) == -1) {
+                perror("close fifo");
+                exit(1);
+            }
 
             setuid(1000); // Cambia el usuario del proceso
             
@@ -281,9 +298,10 @@ void create_players(GameState* state) {
             exit(1);
         } else {
             // Proceso máster
-            close(pipefd[1]); // Cierra escritura
+            // close(pipefd[1]); // Cierra escritura
+            int fd = open(fifo_path, O_RDONLY); // Abre el FIFO para lectura
             processes[i].pid = pid;
-            processes[i].pipe_read_fd = pipefd[0];
+            processes[i].pipe_read_fd = fd;
             state->players[i].pid = pid;
             processes[i].active = true; // El jugador está activo
         }
@@ -589,8 +607,15 @@ int main(int argc, char* argv[]) {
         if (processes[i].active) {
             close(processes[i].pipe_read_fd);
         }
-        
+        // Eliminar el FIFO
+        char fifo_path[20];
+        snprintf(fifo_path, sizeof(fifo_path), "/tmp/pipe_player_%d", i);
+        if (unlink(fifo_path) == -1) {
+            perror("unlink fifo");
+        }
     }
+
+
 
     // Limpiar memoria compartida
     if (munmap(state, sizeof(GameState) + sizeof(int) * width * height) == -1) {
